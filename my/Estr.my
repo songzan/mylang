@@ -1,0 +1,221 @@
+ns Estr
+
+use Core
+
+fn is-str($s) bool
+  if $s.first > QSTR return true
+  return false
+
+fn is-estr($s) bool
+  if $s.first == EIN return true
+  return false
+
+fn names($s) strs
+  if $s.has('.') return $s.split('.')
+  return $s.split(':')
+
+fn is-atom($s) bool
+  if $s.startwith(EIN)
+    if $s.second == QSTR return true
+  return false
+
+fn is-atom-name($atom $name) bool
+  if $atom.is-atom
+    if $atom.name == $name return true
+  return false
+
+fn is-atoms($s) bool
+  if $s.first == EIN
+    if $s.second == EIN return true
+  return false
+
+fn to-estr($s) str
+  if $s.is-estr return $s
+  return QSTR + $s
+
+fn estr($arr:strs) str
+  my $buf buffer
+  $buf << EIN
+  for $s $arr $buf << $s.to-estr
+  $buf << OUT
+  return $buf.tostr
+
+fn epush($atoms $atom) str
+  return $atoms.chop + $atom + OUT
+
+fn einsert($atom $atoms) str
+  return EIN + $atom + $atoms.rest
+
+fn econcat($a $b) str
+  return $a.chop + $b.rest
+
+fn name($estr) str
+  return $estr.atoms.first
+
+fn value($estr) str
+  return $estr.atoms.second
+
+fn atoms($s) strs
+  if $s.is-str return $s.names
+  if $s.is-atom return $s.rest.items-atom
+  return $s.rest.items-atoms
+
+fn items-atom($estr) strs
+  my $arr strs
+  my $buf buffer
+  my $depth 0
+  my $s $estr.rest
+  for $c $s
+    if $depth == 0
+      case $c
+      of EIN
+        $depth.inc
+        $arr << $buf.tostr
+        set $buf buffer
+        $buf << $c
+      of QSTR
+        $arr << $buf.tostr
+        set $buf buffer
+      of OUT $arr << $buf.tostr
+      then $buf << $c
+    else
+      case $c
+      of EIN
+        $depth.inc
+        $buf << $c
+      of OUT
+        $depth.dec
+        $buf << $c
+      then $buf << $c
+  return $arr
+
+fn items-atoms($estr) strs
+  my $arr strs
+  my $buf buffer
+  $buf << EIN
+  my $depth 1
+  my $s $estr.rest
+  for $c $s
+    if $depth == 0
+      case $c
+      of EIN
+        $depth.inc
+        $arr << $buf.tostr
+        set $buf buffer
+        $buf << EIN
+      of OUT $arr << $buf.tostr
+      then $buf << $c
+    else
+      case $c
+      of EIN
+        $depth.inc
+        $buf << $c
+      of OUT
+        $depth.dec
+        $buf << $c
+      then $buf << $c
+  return $arr
+
+fn clean($ast) str
+  if $ast.is-atom return $ast.clean-atom
+  return $ast.clean-atoms
+
+fn clean-atom($atom) str
+  my [$name $value] $atom
+  if $value.is-str
+    return [$name $value]
+  if $value.is-atom
+    return [$name $value.clean-atom]
+  return [$name $value.clean-atoms]
+
+fn clean-atoms($args) str
+  my $atoms $args.atoms
+  my $clean-atoms $atoms.map(clean-atom)
+  my $estr-clean-atoms [$clean-atoms]
+  return $estr-clean-atoms
+
+fn from-ejson($ejson) str
+  my $buf buffer
+  my $mode 0
+  for $c $ejson
+    if $c.isspace.not
+      case $mode
+      of 1
+        set $mode 0
+        case $c
+        of 's' $buf << ' '
+        of 't' $buf << '\t'
+        of 'r' $buf << '\r'
+        of 'n' $buf << '\n'
+        then $buf << $c
+      then
+        case $c
+        of '[' $buf << EIN
+        of ']' $buf << OUT
+        of '.' $buf << QSTR
+        of ':' set $mode 1
+        then $buf << $c
+  return $buf.tostr
+
+fn to-ejson($estr) str
+  my $buf buffer
+  for $c $estr
+    case $c
+    of EIN $buf << '['
+    of OUT $buf << ']'
+    of QSTR $buf << '.'
+    of '[' $buf << ":["
+    of ']' $buf << ":]"
+    of '.' $buf << ":."
+    of ':' $buf << "::"
+    of ' ' $buf << ":s"
+    of '\t' $buf << ":t"
+    of '\n' $buf << ":n"
+    of '\r' $buf << ":r"
+    then $buf << $c
+  return $buf.tostr
+
+fn to-json($estr) str
+  my $buf buffer
+  my $mode 0
+  for $c $estr
+    case $mode
+    of 0
+      case $c
+      of EIN
+        $buf << '['
+      of QSTR
+        $buf << '"'
+        set $mode 1
+      of OUT
+        $buf << ']'
+        set $mode 2
+      then $buf << $c
+    of 1
+      case $c
+      of EIN
+        $buf << "\",["
+        set $mode 0
+      of QSTR $buf << "\",\""
+      of OUT
+        $buf << "\"]"
+        set $mode 2
+      of ' ' $buf << "\t"
+      of '\n' $buf << "\n"
+      of '\r' $buf << "\r"
+      of '\\' $buf << "\\"
+      of '"' $buf << "\\\""
+      then $buf << $c
+    then
+      case $c
+      of EIN
+        $buf << ",["
+        set $mode 0
+      of QSTR
+        $buf << ",\""
+        set $mode 1
+      of OUT $buf << ']'
+      then $buf << $c
+  return $buf.tostr
+
+// vim: ft=my

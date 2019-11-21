@@ -1,0 +1,702 @@
+// grammar Python
+
+top
+ | ( _s @top )+ EOF
+ ;
+
+_s
+ | :s+
+ | '#' ~ :v
+ ;
+
+@top
+ | import
+ | funcdef
+ | classdef
+ ;
+
+import-stmt
+ | import-name
+ | import-from
+ ;
+
+import-name
+ | :import dotted-as-names
+ ;
+
+import-from
+ | :from $from
+ | :import $import
+ ;
+
+from
+ | ('.' | '...')* dotted-name
+ | ('.' | '...')+
+ ;
+
+import
+ | '*'
+ | '(' import-as-names ')'
+ | import-as-names
+ ;
+
+import-as-name
+ | name (:as name)?
+ ;
+
+dotted-as-name
+ | dotted-name ?(:as name)
+ ;
+
+import-as-names
+ | import-as-name *(',' import-as-name) ?','
+ ;
+
+dotted-as-names
+ | dotted-as-name *(',' dotted-as-name)
+ ;
+
+dotted-name
+ | name *('.' name)
+ ;
+
+name
+ | [_\a] [_\a\d]*
+ ;
+
+funcdef
+ | :def name parameters ?('->' test) ':' suite
+ ;
+
+parameters
+ | '(' ?typedargslist ')'
+ ;
+
+typedargslist
+ | tfpdef ?('=' test) *(',' tfpdef ?('=' test)) (',' ('*' tfpdef? *(',' tfpdef ?('=' test)) ?(',' '**' tfpdef)
+ | '**' tfpdef)?)?
+ | '*' tfpdef? (',' tfpdef ('=' test)?)* (',' '**' tfpdef)?
+ | '**' tfpdef
+ ;
+
+tfpdef
+ | name (':' test)?
+ ;
+
+varargslist
+ | name ('=' test)? (',' name ('=' test)?)* (',' ('*' name? (',' name ('=' test)?)* (',' '**' name)?
+ | '**' name)?)?
+ | '*' name? (',' name ('=' test)?)* (',' '**' name)?
+ | '**' name
+ ;
+
+////////////////////////////////
+classdef
+ | CLASS NAME ( '(' arglist? ')' )? ':' suite
+ ;
+
+arglist
+ | ( argument ',' )* ( argument ','?
+ | '*' test ( ',' argument )* ( ',' '**' test )?
+ | '**' test
+ )
+ ;
+
+argument
+ | test comp_for?
+ | test '=' test
+ ;
+
+stmt
+ | simple_stmt
+ | compound_stmt
+ ;
+
+simple_stmt
+ | small_stmt ( ';' small_stmt )* ';'? NEWLINE
+ ;
+
+small_stmt
+ | expr_stmt
+ | del_stmt
+ | pass_stmt
+ | flow_stmt
+ | import_stmt
+ | global_stmt
+ | nonlocal_stmt
+ | assert_stmt
+ ;
+
+expr_stmt
+ | testlist_star_expr ( augassign ( yield_expr | testlist)
+ | ( '=' ( yield_expr| testlist_star_expr ) )*
+ )
+ ;
+
+testlist_star_expr
+ | ( test | star_expr ) ( ',' ( test | star_expr ) )* ','?
+ ;
+
+suite
+ | simple_stmt
+ | NEWLINE INDENT stmt+ DEDENT
+ ;
+
+test
+ | or_test ( IF or_test ELSE test )?
+ | lambdef
+ ;
+
+test_nocond
+ | or_test
+ | lambdef_nocond
+ ;
+
+lambdef
+ | LAMBDA varargslist? ':' test
+ ;
+
+lambdef_nocond
+ | LAMBDA varargslist? ':' test_nocond
+ ;
+
+or_test
+ | and_test ( OR and_test )*
+ ;
+
+and_test
+ | not_test ( AND not_test )*
+ ;
+
+not_test
+ | NOT not_test
+ | comparison
+ ;
+
+comparison
+ | star_expr ( comp_op star_expr )*
+ ;
+
+star_expr
+ | '*'? expr
+ ;
+
+expr
+ | xor_expr ( '|' xor_expr )*
+ ;
+
+xor_expr
+ | and_expr ( '^' and_expr )*
+ ;
+
+and_expr
+ | shift_expr ( '&' shift_expr )*
+ ;
+
+shift_expr
+ | arith_expr ( '<<' arith_expr
+ | '>>' arith_expr
+ )*
+ ;
+
+arith_expr
+ | term ( '+' term
+ | '-' term
+ )*
+ ;
+
+term
+ | factor ( '*' factor
+ | '/' factor
+ | '%' factor
+ | '//' factor
+ | '@' factor
+ )*
+ ;
+
+factor
+ | '+' factor
+ | '-' factor
+ | '~' factor
+ | power
+ ;
+
+power
+ | atom trailer* ( '**' factor )?
+ ;
+
+atom
+ | '(' ( yield_expr | testlist_comp )? ')'
+ | '[' testlist_comp? ']'
+ | '{' dictorsetmaker? '}'
+ | NAME
+ | number
+ | str+
+ | '...'
+ | NONE
+ | TRUE
+ | FALSE
+ ;
+
+testlist_comp
+ | test ( comp_for
+ | ( ',' test )* ','?
+ )
+ ;
+
+trailer
+ | '(' arglist? ')'
+ | '[' subscriptlist ']'
+ | '.' NAME
+ ;
+
+subscriptlist
+ | subscript ( ',' subscript )* ','?
+ ;
+
+subscript
+ | test
+ | test? ':' test? sliceop?
+ ;
+
+sliceop
+ | ':' test?
+ ;
+
+exprlist
+ | star_expr ( ',' star_expr )* ','?
+ ;
+
+testlist
+ | test ( ',' test )* ','?
+ ;
+
+dictorsetmaker
+ | test ':' test ( comp_for
+ | ( ',' test ':' test )* ','?
+ )
+ | test ( comp_for
+ | ( ',' test )* ','?
+ )
+ ;
+
+comp_iter
+ | comp_for
+ | comp_if
+ ;
+
+comp_for
+ | FOR exprlist IN or_test comp_iter?
+ ;
+
+comp_if
+ | IF test_nocond comp_iter?
+ ;
+
+yield_expr
+ | YIELD yield_arg?
+ ;
+
+yield_arg
+ | FROM test
+ | testlist
+ ;
+
+str
+ | STRING_LITERAL
+ | BYTES_LITERAL
+ ;
+
+NEWLINE
+ | ( SPACES
+ | ( '\r'? '\n' | '\r' ) SPACES?
+ )
+ ;
+
+STRING_LITERAL
+ | [uU]? [rR]? ( SHORT_STRING | LONG_STRING )
+ ;
+
+BYTES_LITERAL
+ | [bB] [rR]? ( SHORT_BYTES | LONG_BYTES )
+ ;
+
+DOT : '.';
+ELLIPSIS : '...';
+STAR : '*';
+OPEN_PAREN : '(' ;
+CLOSE_PAREN : ')' ;
+COMMA : ',';
+COLON : ':';
+SEMI_COLON : ';';
+POWER : '**';
+ASSIGN : '=';
+OPEN_BRACK : '[' ;
+CLOSE_BRACK : ']' ;
+OR_OP : '|';
+XOR : '^';
+AND_OP : '&';
+LEFT_SHIFT : '<<';
+RIGHT_SHIFT : '>>';
+ADD : '+';
+MINUS : '-';
+DIV : '/';
+MOD : '%';
+IDIV : '//';
+NOT_OP : '~';
+OPEN_BRACE : '{';
+CLOSE_BRACE : '}';
+LESS_THAN : '<';
+GREATER_THAN : '>';
+EQUALS : '==';
+GT_EQ : '>=';
+LT_EQ : '<=';
+NOT_EQ_1 : '<>';
+NOT_EQ_2 : '!=';
+AT : '@';
+ARROW : '->';
+ADD_ASSIGN : '+=';
+SUB_ASSIGN : '-=';
+MULT_ASSIGN : '*=';
+AT_ASSIGN : '@=';
+DIV_ASSIGN : '/=';
+MOD_ASSIGN : '%=';
+AND_ASSIGN : '&=';
+OR_ASSIGN : '|=';
+XOR_ASSIGN : '^=';
+LEFT_SHIFT_ASSIGN : '<<=';
+RIGHT_SHIFT_ASSIGN : '>>=';
+POWER_ASSIGN : '**=';
+IDIV_ASSIGN : '//=';
+
+SKIP_
+ | ( SPACES | COMMENT | LINE_JOINING ) -> skip
+ ;
+
+UNKNOWN_CHAR
+ | .
+ ;
+
+fragment SHORT_STRING
+ | '\'' ( STRING_ESCAPE_SEQ | ~[\\\r\n'] )* '\''
+ | '"' ( STRING_ESCAPE_SEQ | ~[\\\r\n"] )* '"'
+ ;
+
+fragment LONG_STRING
+ | '\'\'\'' LONG_STRING_ITEM*? '\'\'\''
+ | '"""' LONG_STRING_ITEM*? '"""'
+ ;
+
+fragment LONG_STRING_ITEM
+ | LONG_STRING_CHAR
+ | STRING_ESCAPE_SEQ
+ ;
+
+fragment LONG_STRING_CHAR
+ | ~'\\'
+ ;
+
+fragment STRING_ESCAPE_SEQ
+ | '\\' .
+ ;
+
+fragment SHORT_BYTES
+ | '\'' ( SHORT_BYTES_CHAR_NO_SINGLE_QUOTE | BYTES_ESCAPE_SEQ )* '\''
+ | '"' ( SHORT_BYTES_CHAR_NO_DOUBLE_QUOTE | BYTES_ESCAPE_SEQ )* '"'
+ ;
+
+fragment LONG_BYTES
+ | '\'\'\'' LONG_BYTES_ITEM*? '\'\'\''
+ | '"""' LONG_BYTES_ITEM*? '"""'
+ ;
+
+fragment LONG_BYTES_ITEM
+ | LONG_BYTES_CHAR
+ | BYTES_ESCAPE_SEQ
+ ;
+
+fragment SHORT_BYTES_CHAR_NO_SINGLE_QUOTE
+ | [\u0000-\u0009]
+ | [\u000B-\u000C]
+ | [\u000E-\u0026]
+ | [\u0028-\u005B]
+ | [\u005D-\u007F]
+ ;
+
+fragment SHORT_BYTES_CHAR_NO_DOUBLE_QUOTE
+ | [\u0000-\u0009]
+ | [\u000B-\u000C]
+ | [\u000E-\u0021]
+ | [\u0023-\u005B]
+ | [\u005D-\u007F]
+ ;
+
+fragment LONG_BYTES_CHAR
+ | [\u0000-\u005B]
+ | [\u005D-\u007F]
+ ;
+
+fragment BYTES_ESCAPE_SEQ
+ | '\\' [\u0000-\u007F]
+ ;
+
+fragment SPACES
+ | [ \t]+
+ ;
+
+fragment LINE_JOINING
+ | '\\' SPACES? ( '\r'? '\n' | '\r' )
+ ;
+
+@expr
+ | if
+ | while
+ | for
+ | try
+ | with
+ | set
+ | del
+ | pass
+ | flow
+ | global
+ | nonlocal
+ | assert
+ ;
+
+set
+ | testlist_star_expr (augassign (yield_expr | testlist)
+ | ('=' (yield_expr| testlist_star_expr))*)
+ ;
+
+testlist_star_expr
+ | (test | star_expr) (',' (test | star_expr))* ','?
+ ;
+
+global
+ | :global name *(',' name)
+ ;
+
+nonlocal
+ | :nonlocal name *(',' name)
+ ;
+
+if
+ | :if test ':' suite *elif ?else
+ ;
+
+elif
+ | :elif test ':' suite
+ ;
+
+else
+ | :else ':' suite
+ ;
+
+while
+ | :while test ':' suite ?else
+ ;
+
+for
+ | :for exprlist :in testlist ':' suite ?else
+ ;
+
+try
+ | :try ':' suite ((except_clause ':' suite)+ ?else (:finally ':' suite)?
+ | :finally ':' suite
+)
+ ;
+
+with
+ | :with with_item (',' with_item)* ':' suite
+ ;
+
+with_item
+ | test (:as expr)?
+ ;
+
+except_clause
+ | :except ?(test (:as name)?)
+ ;
+
+flow
+ | break
+ | continue
+ | return
+ | raise
+ | yield
+ ;
+
+del
+ | :del exprlist
+ ;
+
+pass
+ | :pass
+ ;
+
+break
+ | :break
+ ;
+
+continue
+ | :continue
+ ;
+
+return
+ | :return ?testlist
+ ;
+
+yield
+ | yield_expr
+ ;
+
+raise
+ | :raise ?(test ?(:from test))
+ ;
+
+@built
+ | not
+ | print
+ ;
+
+not
+ | :not @expr
+ ;
+
+print
+ | :print @expr
+ ;
+
+assert
+ | :assert test (',' test)?
+ ;
+
+op
+ | '+='
+ | '-='
+ | '*='
+ | '@='
+ | '/='
+ | '%='
+ | '&='
+ | '|='
+ | '^='
+ | '<<='
+ | '>>='
+ | '**='
+ | '//='
+ | '<'
+ | '>'
+ | '=='
+ | '>='
+ | '<='
+ | '<>'
+ | '!='
+ | :in
+ | :not :in
+ | :is :not
+ | :is
+ ;
+
+@value
+ | lstr
+ | number
+ | bool
+ | none
+ | name
+ ;
+
+lstr
+ | { '"""' ~ '"""' }
+ | { "'''" ~ "'''" }
+ ;
+
+str
+ | '"' ( char | schar )* '"'
+ | "'" ( char | schar )* "'"
+ ;
+
+bool
+ | :True | :False
+ ;
+
+none
+ | :None
+ ;
+
+list
+ | '[' (@value (',' @value?)*)* ']'
+ ;
+
+tuple
+ | '(' @value* ')'
+ ;
+
+dict
+ | '{' @value* '}'
+ ;
+
+index
+ | '[' \d* ':' \d* ']'
+ ;
+
+number
+ | integer
+ | float-number
+ | imag-number
+ ;
+
+integer
+ | dec-int
+ | oct-int
+ | hex-int
+ | bin-int
+ ;
+
+dec-int
+ | [1-9] +:d
+ ;
+
+oct-int
+ | '0' [oO] +[0-7]
+ ;
+
+hex-int
+ | '0' [xX] +:x
+ ;
+
+bin-int
+ | '0' [bB] +[01]
+ ;
+
+float-number
+ | point-float
+ | exponent-float
+ ;
+
+imag-number
+ | (float-number | int-part) [jJ]
+ ;
+
+point-float
+ | int-part? fraction
+ | int-part '.'
+ ;
+
+exponent-float
+ | (int-part | point-float) exponent
+ ;
+
+int-part
+ | +:d
+ ;
+
+fraction
+ | '.' +:d
+ ;
+
+exponent
+ | [eE] [+-]? +:d
+ ;
+
+# vim: ft=spp

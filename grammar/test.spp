@@ -1,0 +1,40 @@
+top
+ | number
+ ;
+
+number
+ | integer
+ | int-part? fraction
+ | int-part '.'
+ | exponent-float
+ | (float-number | int-part) [jJ]
+ ;
+
+exponent-float
+ | (int-part | point-float) exponent
+ ;
+
+int-part
+ | \d+
+ ;
+
+fraction
+ | '.' \d+
+ ;
+
+exponent
+ | [eE] [+-]? \d+
+ ;
+
+integer
+ | [1-9] \d+
+ | '0' FollowZero?
+ ;
+
+FollowZero
+ | [oO] [0-7]+
+ | [xX] \x+
+ | [bB] [01]+
+ ;
+
+// vim: ft=spp

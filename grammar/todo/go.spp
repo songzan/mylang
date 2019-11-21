@@ -1,0 +1,654 @@
+// grammar golang
+
+top
+ | package import* ( topLevel eos )*
+ ;
+
+package
+ | :package IDENTIFIER eos
+ ;
+
+eos
+ | ';'
+ | \v
+ | EOF
+ ;
+
+import
+ | :import ( importSpec | '(' ( importSpec eos )* ')' ) eos
+ ;
+
+importSpec
+ | ( '.' | IDENTIFIER )? importPath
+ ;
+
+importPath
+ | STRING_LIT
+ ;
+
+topLevel
+ | declaration
+ | functionDecl
+ | methodDecl
+ ;
+
+declaration
+ | const
+ | type
+ | varDecl
+ ;
+
+const
+ | :const ( constSpec
+ | '(' ( constSpec eos )* ')' )
+ ;
+
+constSpec
+ | identifierList ( type? '=' expressionList )?
+ ;
+
+identifierList
+ | IDENTIFIER ( ',' IDENTIFIER )*
+ ;
+
+expressionList
+ | expression ( ',' expression )*
+ ;
+
+type
+ | :type ( typeSpec
+ | '(' ( typeSpec eos )* ')' )
+ ;
+
+typeSpec
+ | IDENTIFIER type
+ ;
+
+functionDecl
+ | :func IDENTIFIER ( function | signature )
+ ;
+
+function
+ | signature block
+ ;
+
+methodDecl
+ | :func receiver IDENTIFIER ( function | signature )
+ ;
+
+receiver
+ | parameters
+ ;
+
+varDecl
+ | 'var' ( varSpec | '(' ( varSpec eos )* ')' )
+ ;
+
+varSpec
+ | identifierList ( type ( '=' expressionList )? | '=' expressionList )
+ ;
+
+block
+ | '{' statementList '}'
+ ;
+
+statementList
+ | ( statement eos )*
+ ;
+
+statement
+ | declaration
+ | labeledStmt
+ | simpleStmt
+ | goStmt
+ | returnStmt
+ | breakStmt
+ | continueStmt
+ | gotoStmt
+ | fallthroughStmt
+ | block
+ | ifStmt
+ | switchStmt
+ | selectStmt
+ | forStmt
+ | deferStmt
+ ;
+
+simpleStmt
+ | sendStmt
+ | expressionStmt
+ | incDecStmt
+ | assignment
+ | shortVarDecl
+ | emptyStmt
+ ;
+
+expressionStmt
+ | expression
+ ;
+
+sendStmt
+ | expression '<-' expression
+ ;
+
+incDecStmt
+ | expression ( '++' | '--' )
+ ;
+
+assignment
+ | expressionList assign_op expressionList
+ ;
+
+assign_op
+ | '+='
+ | '-='
+ | '|='
+ | '^='
+ | '*='
+ | '/='
+ | '%='
+ | '<<='
+ | '>>='
+ | '&='
+ | '&^='
+ | '='
+ ;
+
+shortVarDecl
+ | identifierList ':=' expressionList
+ ;
+
+emptyStmt
+ | ';'
+ ;
+
+labeledStmt
+ | IDENTIFIER ':' statement
+ ;
+
+returnStmt
+ | :return expressionList?
+ ;
+
+breakStmt
+ | :break IDENTIFIER?
+ ;
+
+continueStmt
+ | :continue IDENTIFIER?
+ ;
+
+gotoStmt
+ | :goto IDENTIFIER
+ ;
+
+fallthroughStmt
+ | :fallthrough
+ ;
+
+deferStmt
+ | :defer expression
+ ;
+
+ifStmt
+ | :if (simpleStmt ';')? expression block ( 'else' ( ifStmt | block ) )?
+ ;
+
+switchStmt
+ | exprSwitchStmt | typeSwitchStmt
+ ;
+
+exprSwitchStmt
+ | :switch ( simpleStmt ';' )? expression? '{' exprCaseClause* '}'
+ ;
+
+exprCaseClause
+ | exprSwitchCase ':' statementList
+ ;
+
+exprSwitchCase
+ | :case expressionList | :default
+ ;
+
+typeSwitchStmt
+ | :switch ( simpleStmt ';' )? typeSwitchGuard '{' typeCaseClause* '}'
+ ;
+
+typeSwitchGuard
+ | ( IDENTIFIER ':=' )? primaryExpr '.' '(' :type ')'
+ ;
+
+typeCaseClause
+ | typeSwitchCase ':' statementList
+ ;
+
+typeSwitchCase
+ | :case typeList
+ | :default
+ ;
+
+typeList
+ | type ( ',' type )*
+ ;
+
+selectStmt
+ | :select '{' commClause* '}'
+ ;
+
+commClause
+ | commCase ':' statementList
+ ;
+
+commCase
+ | :case ( sendStmt | recvStmt )
+ | :default
+ ;
+
+recvStmt
+ | ( expressionList '=' | identifierList ':=' )? expression
+ ;
+
+forStmt
+ | :for ( expression | forClause | rangeClause )? block
+ ;
+
+forClause
+ | simpleStmt? ';' expression? ';' simpleStmt?
+ ;
+
+rangeClause
+ | (expressionList '=' | identifierList ':=' )? 'range' expression
+ ;
+
+goStmt
+ | :go expression
+ ;
+
+type
+ | typeName
+ | typeLit
+ | '(' type ')'
+ ;
+
+typeName
+ | IDENTIFIER
+ | qualifiedIdent
+ ;
+
+typeLit
+ | arrayType
+ | structType
+ | pointerType
+ | functionType
+ | interfaceType
+ | sliceType
+ | mapType
+ | channelType
+ ;
+
+arrayType
+ | '[' arrayLength ']' elementType
+ ;
+
+arrayLength
+ | expression
+ ;
+
+elementType
+ | type
+ ;
+
+pointerType
+ | '*' type
+ ;
+
+interfaceType
+ | :interface '{' ( methodSpec eos )* '}'
+ ;
+
+sliceType
+ | '[' ']' elementType
+ ;
+
+mapType
+ | :map '[' type ']' elementType
+ ;
+
+channelType
+ | ( :chan | :chan '<-' | '<-' :chan ) elementType
+ ;
+
+methodSpec
+ | IDENTIFIER parameters result
+ | typeName
+ | IDENTIFIER parameters
+ ;
+
+functionType
+ | :func signature
+ ;
+
+signature
+ | parameters result
+ | parameters
+ ;
+
+result
+ | parameters
+ | type
+ ;
+
+parameters
+ | '(' ( parameterList ','? )? ')'
+ ;
+
+parameterList
+ | parameterDecl ( ',' parameterDecl )*
+ ;
+
+parameterDecl
+ | identifierList? '...'? type
+ ;
+
+operand
+ | literal
+ | operandName
+ | methodExpr
+ | '(' expression ')'
+ ;
+
+literal
+ | basicLit
+ | compositeLit
+ | functionLit
+ ;
+
+basicLit
+ | INT_LIT
+ | FLOAT_LIT
+ | IMAGINARY_LIT
+ | RUNE_LIT
+ | STRING_LIT
+ ;
+
+operandName
+ | IDENTIFIER
+ | qualifiedIdent
+ ;
+
+qualifiedIdent
+ | IDENTIFIER '.' IDENTIFIER
+ ;
+
+compositeLit
+ | literalType literalValue
+ ;
+
+literalType
+ | structType
+ | arrayType
+ | '[' '...' ']' elementType
+ | sliceType
+ | mapType
+ | typeName
+ ;
+
+literalValue
+ | '{' ( elementList ','? )? '}'
+ ;
+
+elementList
+ | keyedElement (',' keyedElement)*
+ ;
+
+keyedElement
+ | (key ':')? element
+ ;
+
+key
+ | IDENTIFIER
+ | expression
+ | literalValue
+ ;
+
+element
+ | expression
+ | literalValue
+ ;
+
+structType
+ | :struct '{' ( fieldDecl eos )* '}'
+ ;
+
+fieldDecl
+ | ( identifierList type | anonymousField ) STRING_LIT?
+ ;
+
+anonymousField
+ | '*'? typeName
+ ;
+
+functionLit
+ | :func function
+ ;
+
+primaryExpr
+ | operand
+ | conversion
+ | primaryExpr selector
+ | primaryExpr index
+ | primaryExpr slice
+ | primaryExpr typeAssertion
+ | primaryExpr arguments
+ ;
+
+selector
+ | '.' IDENTIFIER
+ ;
+
+index
+ | '[' expression ']'
+ ;
+
+slice
+ | '[' (( expression? ':' expression? )
+ | ( expression? ':' expression ':' expression )) ']'
+ ;
+
+typeAssertion
+ | '.' '(' type ')'
+ ;
+
+arguments
+ | '(' ( ( expressionList
+ | type ( ',' expressionList )? ) '...'? ','? )? ')'
+ ;
+
+methodExpr
+ | receiverType '.' IDENTIFIER
+ ;
+
+receiverType
+ | typeName
+ | '(' '*' typeName ')'
+ | '(' receiverType ')'
+ ;
+
+expression
+ | unaryExpr
+ | expression BINARY_OP expression
+ ;
+
+unaryExpr
+ | primaryExpr
+ | UNARY_OP unaryExpr
+ ;
+
+UNARY_OP
+ | '+'
+ | '-'
+ | '!'
+ | '^'
+ | '*'
+ | '&'
+ | '<-'
+ ;
+
+BINARY_OP
+ | '||'
+ | '&&'
+ | '=='
+ | '!='
+ | '<'
+ | '<='
+ | '>'
+ | '>='
+ | '+'
+ | '-'
+ | '|'
+ | '^'
+ | '*'
+ | '/'
+ | '%'
+ | '<<'
+ | '>>'
+ | '&'
+ | '&^'
+ ;
+
+conversion
+ | type '(' expression ','? ')'
+ ;
+
+IDENTIFIER
+ | \a [ \a \d ]*
+ ;
+
+
+INT_LIT
+ | DECIMAL_LIT
+ | OCTAL_LIT
+ | HEX_LIT
+ ;
+
+DECIMAL_LIT
+ | [1-9] DECIMAL_DIGIT*
+ ;
+
+OCTAL_LIT
+ | '0' OCTAL_DIGIT*
+ ;
+
+HEX_LIT
+ | '0' [xX] HEX_DIGIT+
+ ;
+
+FLOAT_LIT
+ | DECIMALS '.' DECIMALS? EXPONENT?
+ | DECIMALS EXPONENT
+ | '.' DECIMALS EXPONENT?
+ ;
+
+DECIMALS
+ | DECIMAL_DIGIT+
+ ;
+
+EXPONENT
+ | [eE] [-+]? DECIMALS
+ ;
+
+IMAGINARY_LIT
+ | (DECIMALS | FLOAT_LIT) 'i'
+ ;
+
+RUNE_LIT
+ | ['] ( UNICODE_VALUE | BYTE_VALUE ) [']
+ ;
+
+UNICODE_VALUE
+ | UNICODE_CHAR
+ | LITTLE_U_VALUE
+ | BIG_U_VALUE
+ | ESCAPED_CHAR
+ ;
+
+BYTE_VALUE
+ | OCTAL_BYTE_VALUE
+ | HEX_BYTE_VALUE
+ ;
+
+OCTAL_BYTE_VALUE
+ | '\\' OCTAL_DIGIT 3
+ ;
+
+HEX_BYTE_VALUE
+ | '\\' 'x' HEX_DIGIT HEX_DIGIT
+ ;
+
+LITTLE_U_VALUE
+ | { \e 'u' HEX_DIGIT 4 }
+ ;
+
+BIG_U_VALUE
+ | { \e 'U' HEX_DIGIT 8 }
+ ;
+
+ESCAPED_CHAR
+ | { \e [abfnrtv'\e\q] }
+ ;
+
+STRING_LIT
+ | RAW_STRING_LIT
+ | INTERPRETED_STRING_LIT
+ ;
+
+RAW_STRING_LIT
+ | \c ( UNICODE_CHAR | NEWLINE | !\c )* \c
+ ;
+
+INTERPRETED_STRING_LIT
+ | '"' ( '\\"' | UNICODE_VALUE | BYTE_VALUE )* '"'
+ ;
+
+LETTER
+ | UNICODE_LETTER
+ | '_'
+ ;
+
+DECIMAL_DIGIT
+ | \d
+ ;
+
+OCTAL_DIGIT
+ | [0-7]
+ ;
+
+HEX_DIGIT
+ | \x
+ ;
+
+NEWLINE
+ | [\p000A]
+ ;
+
+UNICODE_CHAR
+ | ![\p000A]
+ ;
+
+_s
+ | _WS | _COMMENT | _LINE_COMMENT
+ ;
+
+_WS
+ | \h+
+ ;
+ 
+_COMMENT
+ | '/*' ~ ( '*/' | EOF )
+ ;
+
+_LINE_COMMENT
+ | '//' ~ ( \v | EOF )
+ ;
+
+// vim: ft=spp

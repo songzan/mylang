@@ -1,0 +1,83 @@
+set nocompatible
+set fileformat=unix
+syntax on
+" reload menu
+set langmenu=en_US
+let $LANG = 'en_US'
+source $VIMRUNTIME/delmenu.vim
+source $VIMRUNTIME/menu.vim
+set linespace=2
+"colorscheme darkblue
+"colorscheme desert
+colorscheme evening
+"colorscheme koehler
+"colorscheme slate
+"colorscheme torte
+"set guifont=Monaco:h14.5
+set guifont=Monaco:h14.5
+"set guifont=Microsoft\ YaHei\ Mono:h16
+"tab would transfer to blank auto
+set expandtab
+set nobackup
+set noswapfile
+set number
+set numberwidth=3
+set showmatch
+set backspace=indent,eol,start
+set ruler
+set showcmd
+set showmode
+filetype plugin indent on
+set tabstop=2
+set shiftwidth=2
+set softtabstop=2
+set hls
+"Toggle Menu and Toolbar
+"set guioptions-=m
+"set guioptions-=T
+" auto read if change in other place
+set autoread
+" line break with whole words
+set linebreak
+" < .. > also would show match
+set matchpairs+=<:>
+" suomali children ignore
+set shortmess=atI
+" close dingding
+set novisualbell
+" match pair time
+set matchtime=1
+" cursor could to next line
+set whichwrap+=<,>,h,l
+" not voice of error
+set noeb
+" backspace would delete 4 space
+"set langmenu=none
+"set encoding=utf-8
+set fileencodings=utf-8
+set fileencoding=utf-8
+
+map <F3> <esc>^i    <esc>j
+map <F4> <Esc>^i## <Esc>j
+""" Change ColorScheme
+:an 1.05 ToolBar.New     :tabnew<CR>
+:tmenu ToolBar.New       New file
+:an 1.48 ToolBar.NewSesn :call <SID>Change_colorscheme()<CR>
+:tmenu   ToolBar.NewSesn Change ColorScheme
+
+func! s:Change_colorscheme()
+if !exists("s:dict_colorscheme")
+	let s:dict_colorscheme = {1:'darkblue', 2:'desert', 3:'evening', 4:'koehler', 5:'slate', 6:'torte'}
+endif
+if !exists("b:current_count")
+	let b:current_count = 1
+endif
+if b:current_count > 6
+	let b:current_count = 1
+endif
+let s:current_colorscheme = s:dict_colorscheme[b:current_count]
+exe ":colorscheme " . s:current_colorscheme
+echo s:current_colorscheme
+let b:current_count += 1
+endfun
+

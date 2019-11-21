@@ -1,0 +1,260 @@
+// grammar of MyLang
+
+top
+ | ( _s | @top )+ EOF
+ ;
+
+@top
+ | ns
+ | fn
+ | use
+ | func
+ | define
+ | struct
+ ;
+
+_s
+ | \s+
+ | '//' ~ \v
+ | '/*' ~ '*/'
+ ;
+
+ns
+ | :ns name
+ ;
+
+use
+ | :use name
+ ;
+
+define
+ | :define name name
+ ;
+
+func
+ | :func ( sym | op ) name name
+ ;
+
+struct
+ | :struct name '[' fields ']'
+ ;
+
+fields
+ | ( \s | name )+
+ ;
+
+name
+ | [:\a_]+
+ ;
+
+fn
+ | :fn sym @sign @exprs
+ ;
+
+@sign
+ | fnargs name
+ ;
+
+fnargs
+ | '(' ( _s | fnarg )* ')'
+ ;
+
+fnarg
+ | { '$' [:\w]* }
+ ;
+
+@exprs
+ | ( \s | @expr )+
+ ;
+
+@expr
+ | my
+ | set
+ | for
+ | while
+ | case
+ | return
+ | @if
+ | say
+ | print
+ | error
+ | @value
+ ;
+
+my
+ | :my ( var | estr ) @value
+ ;
+
+set
+ | :set @value @value
+ ;
+
+for
+ | :for var @value ( block | @expr )
+ ;
+
+block
+ | '{' ( _s | @expr )+ '}'
+ ;
+
+case
+ | :case var ofthen
+ ;
+
+ofthen
+ | ( _s | of )+ then?
+ ;
+
+of
+ | :of @liter @exprs
+ ;
+
+@liter
+ | const
+ | int
+ | kstr
+ | char
+ | @str
+ ;
+
+then
+ | :then ( block | @expr )
+ ;
+
+@if
+ | if else?
+ ;
+
+if
+ | :if @value ( block | @expr )
+ ;
+
+while
+ | :while @value ( block | @expr )
+ ;
+
+else
+ | :else ( block | @expr )
+ ;
+
+return
+ | :return @value
+ ;
+
+say
+ | :say @value
+ ;
+
+error
+ | :error @str
+ ;
+
+print
+ | :print @value
+ ;
+
+@value
+ | @atom ( @calls | pcall )?
+ ;
+
+@calls
+ | '.' ( @vars | @syms )
+ ;
+
+@vars
+ | var ( @calls | pcall )?
+ ;
+
+@syms
+ | sym ( @args | @calls | pcall )?
+ ;
+
+@args
+ | args ( @calls | pcall )?
+ ;
+
+pcall
+ | op @value
+ ;
+
+op
+ | [-*=!><+]+
+ ;
+
+args
+ | '(' ( _s | @value | sym )+ ')'
+ ;
+
+sym
+ | { [\l_] [:\w]* '!'? }
+ ;
+
+@atom
+ | var
+ | estr
+ | kstr
+ | char
+ | lstr
+ | @str
+ | const
+ | nil
+ | bool
+ | int
+ | init
+ ;
+
+var
+ | { '$' \w+ }
+ ;
+
+estr
+ | '[' ( _s | @value )+ ']'
+ ;
+
+kstr
+ | { ':' ![)\]}|.\s]* }
+ ;
+
+char
+ | { ['] ~ ['] }
+ ;
+
+lstr
+ | { \c ~ \c }
+ ;
+
+@str
+ | { \q ( dstr | var )* \q }
+ ;
+
+dstr
+ | ( ![$\q\e] | { \e \S } )+
+ ;
+
+const
+ | { \u [\a_]* }
+ ;
+
+nil
+ | :nil
+ ;
+
+bool
+ | :true
+ | :false
+ ;
+
+int
+ | \d+
+ ;
+
+init
+ | :int
+ | :strs
+ | :str
+ | :buffer
+ | :table
+ | :tree
+ ;
+
+// vim: ft=spp

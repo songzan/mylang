@@ -1,0 +1,376 @@
+ns Match
+
+use Core
+use Estr
+
+fn new-cursor($s $t:table) Cursor
+  my $c Cursor
+  my $chars $s.tochars
+  set $c.str $s
+  set $c.input $chars
+  set $c.len $chars.len
+  set $c.at int
+  set $c.output strs
+  set $c.rtable $t
+  set $c.depth 0
+  return $c
+
+fn match-table($s $t:table) str
+  return $s.match-door($t :top)
+
+fn match-door($s $t:table $name) str
+  if $t.has($name).not
+    error "not exists rule: $name"
+  my $rule $t.$name
+  my $c $s.new-cursor($t)
+  my $match $c.match-rule($rule)
+  if $match == FAIL $c.fail-report
+  return [$c.output]
+
+fn readchar($c:Cursor) char
+  my $at $c.at
+  if $at >= $c.len return FOF
+  return $c.input.$at
+
+fn fail-report($c:Cursor) nil
+  my $at $c.at
+  my $s $c.str
+  my $line $s.getline($at)
+  my $code $s.restat($at).toend
+  error "stop at line $line: |$code"
+
+fn match-rule($c:Cursor $atom) str
+  my [$name $rule] $atom
+  case $name
+  of :rules return $c.match-rules($rule)
+  of :chars return $c.match-chars($rule)
+  of :branch return $c.match-branch($rule)
+  of :more return $c.match-more($rule)
+  of :many return $c.match-many($rule)
+  of :maybe return $c.match-maybe($rule)
+  of :time return $c.match-time($rule)
+  of :word return $c.match-word($rule)
+  of :ntoken return $c.match-ntoken($rule)
+  of :gtoken return $c.match-gtoken($rule)
+  of :rtoken return $c.match-rtoken($rule)
+  of :char return $c.match-char($rule)
+  of :class return $c.match-class($rule)
+  of :cclass return $c.match-cclass($rule)
+  of :range return $c.match-range($rule)
+  of :str return $c.match-str($rule)
+  of :anychar return $c.match-anychar($rule)
+  of :not return $c.match-not($rule)
+  of :till return $c.match-till($rule)
+  of :eof return $c.match-eof
+  of :any return $c.match-any
+  then error "match spp rule miss $name"
+  return str
+
+fn match-rules($c:Cursor $rules) str
+  my $gather PASS
+  for $rule $rules.atoms {
+    while $c.readchar.isspace $c.at.inc
+    my $match $c.match-rule($rule)
+    if $match == FAIL return $match
+    set $gather $gather.gather($match)
+  }
+  return $gather
+
+fn match-chars($c:Cursor $rules) str
+  my $gather PASS
+  for $rule $rules.atoms {
+    my $match $c.match-rule($rule)
+    if $match == FAIL return $match
+    set $gather $gather.gather($match)
+  }
+  return $gather
+
+fn match-branch($c:Cursor $rules) str
+  my $at $c.at
+  for $rule $rules.atoms {
+    my $match $c.match-rule($rule)
+    if $match != FAIL return $match
+    if $at != $c.at $c.fail-report
+  }
+  return FAIL
+
+fn match-more($c:Cursor $rule) str
+  my $gather $c.match-rule($rule)
+  if $gather == FAIL return $gather
+  my $match $c.match-many($rule)
+  return $gather.gather($match)
+
+fn match-many($c:Cursor $rule) str
+  my $gather PASS
+  while true {
+    my $match $c.match-rule($rule)
+    if $match == FAIL return $gather
+    set $gather $gather.gather($match)
+  }
+  return $gather
+
+fn match-time($c:Cursor $atom) str
+  my [$time-str $rule] $atom
+  my $time $time-str.toint
+  my $gather PASS
+  my $at $c.at
+  while $time > 0 {
+    my $match $c.match-rule($rule)
+    if $match == FAIL {
+      set $c.at $at
+      return FAIL
+    }
+    $time.dec
+    set $gather $gather.gather($match)
+  }
+  return $gather
+
+fn match-maybe($c:Cursor $rule) str
+  my $match $c.match-rule($rule)
+  if $match == FAIL return PASS
+  return $match
+
+fn match-token($c:Cursor $name) str
+  my $rule $c.rtable.$name
+  $c.depth.inc
+  my $match $c.match-rule($rule)
+  $c.depth.dec
+  return $match
+
+fn match-ntoken($c:Cursor $name) str
+  my $match $c.match-token($name)
+  if $match == FAIL return $match
+  if $match == PASS return $match
+  my $atom [$name $match $c.at.tostr]
+  if $c.depth > 0 return $atom
+  $c.output << $atom
+  return PASS
+
+fn match-gtoken($c:Cursor $name) str
+  my $match $c.match-token($name)
+  if $match == FAIL return $match
+  if $match == PASS return $match
+  if $match.is-str return $match
+  if $match.is-atom {
+    if $c.depth > 0 return $match
+    $c.output << $match
+    return PASS
+  }
+  my $atom [$name $match $c.at.tostr]
+  if $c.depth > 0 return $atom
+  $c.output << $atom
+  return PASS
+
+fn match-rtoken($c:Cursor $name) str
+  my $rule $c.rtable.$name
+  my $match $c.match-rule($rule)
+  if $match == FAIL return $match
+  return PASS
+
+fn match-str($c:Cursor $str) str
+  my $at $c.at
+  for $a $str {
+    if $c.readchar != $a {
+      set $c.at $at
+      return FAIL
+    }
+    $c.at.inc
+  }
+  return $str
+
+fn match-anychar($c:Cursor $str) str
+  for $a $str {
+    if $c.readchar == $a {
+      $c.at.inc
+      return $a.tostr
+    }
+  }
+  return FAIL
+
+fn match-word($c:Cursor $name) str
+  my $at $c.at
+  for $a $name {
+    if $c.readchar != $a {
+      set $c.at $at
+      return FAIL
+    }
+    $c.at.inc
+  }
+  if $c.readchar.iswords {
+    set $c.at $at
+    return FAIL
+  }
+  return $name
+
+fn match-range($c:Cursor $range) str
+  my $from $range.first
+  my $a $c.readchar
+  if $a < $from return FAIL
+  my $to $range.tail
+  if $a > $to return FAIL
+  $c.at.inc
+  return $a.tostr
+  
+fn match-char($c:Cursor $char) str
+  my $a $c.readchar
+  if $char.first != $a return FAIL
+  $c.at.inc
+  return $char
+
+fn match-class($c:Cursor $cchar) str
+  if $c.is-match-class($cchar) {
+    my $a $c.readchar
+    $c.at.inc
+    return $a.tostr
+  }
+  return FAIL
+
+fn match-cclass($c:Cursor $class) str
+  my $a $c.readchar
+  if $c.is-match-cclass($class) {
+    $c.at.inc
+    return $a.tostr
+  }
+  return FAIL
+
+fn match-eof($c:Cursor) str
+  my $a $c.readchar
+  if $a == FOF return PASS
+  return FAIL
+
+fn match-any($c:Cursor) str
+  my $a $c.readchar
+  if $a == FOF return FAIL
+  $c.at.inc
+  return $a.tostr
+
+fn match-till($c:Cursor $rule) str
+  my $buf buffer
+  while $c.is-match-not($rule) {
+    $buf << $c.readchar
+    $c.at.inc
+  }
+  my $gather $buf.tostr
+  my $match $c.match-rule($rule)
+  if $match == FAIL return $gather
+  if $buf.len == 0 return $match
+  return $gather.gather($match)
+
+fn match-not($c:Cursor $rule) str
+  if $c.is-match-rule($rule) return FAIL
+  my $a $c.readchar
+  if $a == FOF return FAIL
+  $c.at.inc
+  return $a.tostr
+
+fn is-match-not($c:Cursor $rule) bool
+  my $a $c.readchar
+  if $a == FOF return false
+  if $c.is-match-rule($rule) return false
+  return true
+
+fn gather($gather $match) str
+  if $match == PASS return $gather
+  if $gather == PASS return $match
+  if $match.is-str {
+    if $gather.is-str return $gather + $match
+    return $gather
+  }
+  if $gather.is-str return $match
+  if $gather.is-atom {
+    if $match.is-atom 
+      return [$gather $match]
+    return $gather.einsert($match)
+  }
+  if $match.is-atom
+    return $gather.epush($match)
+  return $gather.econcat($match)
+
+fn is-match-rule($c:Cursor $atom) bool
+  my [$name $rule] $atom
+  case $name
+  of :cclass return $c.is-match-cclass($rule)
+  of :str return $c.is-match-str($rule)
+  of :range return $c.is-match-range($rule)
+  of :char return $c.is-match-char($rule)
+  of :class return $c.is-match-class($rule)
+  of :anychar return $c.is-match-anychar($rule)
+  then error "is match rule miss $name"
+  return false
+
+fn is-match-range($c:Cursor $range) bool
+  my $a $c.readchar
+  if $a == FOF return false
+  my $from $range.first
+  if $a < $from return false
+  my $to $range.tail
+  if $a > $to return false
+  return true
+
+fn is-match-char($c:Cursor $char) bool
+  my $a $c.readchar
+  if $char.first == $a return true
+  return false
+
+fn is-match-class($c:Cursor $class) bool
+  my $a $c.readchar
+  case $class
+  of :a return $a.isalpha
+  of :A return $a.isalpha.not
+  of :b return $a == ' '
+  of :B return $a != ' '
+  of :c return $a == '`'
+  of :C return $a != '`'
+  of :d return $a.isdigit
+  of :D return $a.isdigit.not
+  of :e return $a == '\\'
+  of :E return $a != '\\'
+  of :h return $a.ishspace
+  of :H return $a.ishspace.not
+  of :l return $a.islower
+  of :L return $a.islower.not
+  of :n return $a == '\n'
+  of :N return $a != '\n'
+  of :q return $a == '"'
+  of :Q return $a != '"'
+  of :r return $a == '\r'
+  of :R return $a != '\r'
+  of :s return $a.isspace
+  of :S return $a.isspace.not
+  of :t return $a == '\t'
+  of :T return $a != '\t'
+  of :u return $a.isupper
+  of :U return $a.isupper.not
+  of :v return $a.isvspace
+  of :V return $a.isvspace.not
+  of :w return $a.iswords
+  of :W return $a.iswords.not
+  of :x return $a.isxdigit
+  of :X return $a.isxdigit.not
+  then return $class.first == $a
+
+fn is-match-cclass($c:Cursor $rules) bool
+  for $rule $rules.atoms {
+    my $match $c.is-match-rule($rule)
+    if $match == true return true
+  }
+  return false
+
+fn is-match-str($c:Cursor $str) bool
+  my $at $c.at
+  for $char $str {
+    if $c.readchar != $char {
+       set $c.at $at
+       return false
+    }
+    $c.at.inc
+  }
+  set $c.at $at
+  return true
+
+fn is-match-anychar($c:Cursor $str) bool
+  for $char $str
+    if $c.readchar == $char return true
+  return false
+
+// vim: ft=my

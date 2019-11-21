@@ -1,0 +1,322 @@
+// grammar lua
+
+top
+ | ( _s | stat )+ EOF
+ ;
+
+_s
+ | ';'
+ | :s+
+ | '--' ~ \v
+ ;
+
+stat
+ | label
+ | break
+ | goto
+ | do
+ | while
+ | repeat
+ | if
+ | for
+ | function
+ | local
+ | return
+ | set
+ | call
+ ;
+
+label
+ | '::' name '::'
+ ;
+
+name
+ | ( [_\a] [_\a\d]* )
+ ;
+
+break
+ | :break
+ ;
+
+goto
+ | :goto name
+ ;
+
+do
+ | :do block :end
+ ;
+
+function
+ | :function funcname funcbody
+ ;
+
+funcname
+ | name ('.' name)* (':' name)?
+ ;
+
+funcbody
+ | '(' parlist? ')' block :end
+ ;
+
+parlist
+ | namelist ?(',' '...')
+ | '...'
+ ;
+
+local
+ | :local namelist ('=' explist)?
+ ;
+
+return
+ | :return explist? ';'?
+ ;
+
+while
+ | :while exp :do block :end
+ ;
+
+repeat
+ | :repeat block :until exp
+ ;
+
+if
+ | :if exp :then block elseif* else? :end
+ ;
+
+elseif
+ | :elseif exp :then block
+ ;
+
+else
+ | :else block
+ ;
+
+for
+ | :for @iter do block end
+ ;
+
+@iter
+ | name '=' exp ',' exp (',' exp)?
+ | namelist :in explist
+ ;
+
+varlist
+ | var (',' var)*
+ ;
+
+namelist
+ | name (',' name)*
+ ;
+
+explist
+ | exp (',' exp)*
+ ;
+
+exp
+ | :nil
+ | :false
+ | :true
+ | number
+ | string
+ | '...'
+ | functiondef
+ | prefixexp
+ | tableconstructor
+ | operatorUnary exp
+ | exp operator exp
+ ;
+
+prefixexp
+ | varOrExp nameAndArgs*
+ ;
+
+call
+ | varOrExp nameAndArgs+
+ ;
+
+set
+ | varlist '=' explist
+ ;
+
+varOrExp
+ | var | '(' exp ')'
+ ;
+
+var
+ | (name | '(' exp ')' varSuffix) varSuffix*
+ ;
+
+varSuffix
+ | nameAndArgs* ('[' exp ']' | '.' name)
+ ;
+
+nameAndArgs
+ | (':' name)? args
+ ;
+
+args
+ | '(' explist? ')'
+ | tableconstructor
+ | string
+ ;
+
+functiondef
+ | :function funcbody
+ ;
+
+tableconstructor
+ | '{' ?fieldlist '}'
+ ;
+
+fieldlist
+ | field (fieldsep field)* fieldsep?
+ ;
+
+field
+ | '[' exp ']' '=' exp
+ | name '=' exp
+ | exp
+ ;
+
+fieldsep
+ | ',' | ';'
+ ;
+
+operator
+ | operatorBitwise
+ | operatorComparison
+ | operatorStrcat
+ | operatorAddSub
+ | operatorComparison
+ | operatorMulDivMod
+ | operatorPower
+ | operatorOr
+ | operatorAnd
+ ;
+
+operatorBitwise
+ | '&' | '|' | '~' | '<<' | '>>'
+ ;
+
+operatorComparison
+ | '<='
+ | '>='
+ | '<'
+ | '>'
+ | '~='
+ | '=='
+ ;
+
+operatorStrcat
+ | '..'
+ ;
+
+operatorAddSub
+ | '+'
+ | '-'
+ ;
+
+operatorMulDivMod
+ | '//'
+ | '*'
+ | '/'
+ | '%'
+ ;
+
+operatorPower
+ | '^'
+ ;
+
+operatorOr
+ | :or
+ ;
+
+operatorAnd
+ | :and
+ ;
+
+operatorUnary
+ | :not | '#' | '-' | '~'
+ ;
+
+string
+ | @NormalString | @CharString | @LongString
+ ;
+
+@NormalString
+ | ["] ( { \e @Escape } | ![\e\q] )* ["]
+ ;
+
+@Escape
+ | [abfnrtvz']
+ | \e
+ | \q
+ | { \r? \n }
+ | @DecimalEscape
+ | @HexEscape
+ | @UtfEscape
+ ;
+
+@DecimalEscape
+ | \d+
+ ;
+
+@HexEscape
+ | { 'x' \x \x }
+ ;
+
+@UtfEscape
+ | ( 'u{' \x+ '}' )
+ ;
+
+@CharString
+ | ['] ( \e @Escape | ![\e'] )* [']
+ ;
+
+@LongString
+ | '[[' ~ ']]'
+ | '[=[' ~ ']=]'
+ ;
+
+number
+ | @ZeroStartNumber
+ | @NoZeroStartNumber
+ ;
+
+@ZeroStartNumber
+ | '0' @FollowZeroNumber?
+ ;
+
+@NoZeroStartNumber
+ | [1-9] \d* @FollowNoZeroNumber?
+ ;
+
+@FollowZeroNumber
+ | [xX] \x+ @FollowHexPart?
+ | '.' @FollowDotNumber
+ ;
+
+@FollowHexPart
+ | @HexExponentPart
+ | '.' ( \x+ @HexExponentPart? | @HexExponentPart )
+ ;
+
+@FollowDotNumber
+ | \d+ ( @HexExponentPart | @ExponentPart )?
+ | \x+ @HexExponentPart?
+ ;
+
+@FollowNoZeroNumber
+ | @ExponentPart
+ | '.' ( \d+ @ExponentPart? | @ExponentPart )
+ ;
+
+@ExponentPart
+ | [eE] [-+]? \d+
+ ;
+
+@HexExponentPart
+ | [pP] [-+]? \d+
+ ;
+
+# vim: ft=spp

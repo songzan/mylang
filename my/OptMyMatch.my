@@ -1,0 +1,244 @@
+ns OptMyMatch
+
+use Core
+use Estr
+
+fn opt-my-match($match) str
+  my $atoms $match.atoms
+  return [$atoms.map(opt-my-atom)]
+
+fn opt-my-ast($ast) str
+  if $ast.is-atom return [$ast.opt-my-atom]
+  return $ast.opt-my-match
+
+fn opt-my-atom($atom) str
+  my [$name $ast $at] $atom
+  case $name
+  of :ns
+    return [:ns $ast.value $at]
+  of :use
+    return [:use $ast.value $at]
+  of :define
+    return $ast.opt-my-define($at)
+  of :func
+    return $ast.opt-my-func($at)
+  of :struct
+    return $ast.opt-my-struct($at)
+  of :fn
+    return $ast.opt-my-fn($at)
+  of :@value
+    return $ast.opt-my-call($at)
+  of :my
+    return $ast.opt-my-my($at)
+  of :for
+    return $ast.opt-my-for($at)
+  of :@str
+    return $ast.opt-my-str($at)
+  of :@exprs
+    return $ast.opt-my-exprs($at)
+  of :ofthen
+    return $ast.opt-my-ofthen($at)
+  of :set
+    return [$name $ast.opt-my-match $at]
+  of :while
+    return [$name $ast.opt-my-match $at]
+  of :of
+    return [$name $ast.opt-my-match $at]
+  of :@if
+    return [:ifelse $ast.opt-my-match $at]
+  of :if
+    return [$name $ast.opt-my-match $at]
+  of :case
+    return [$name $ast.opt-my-match $at]
+  of :block
+    return [$name $ast.opt-my-ast $at]
+  of :estr
+    return [$name $ast.opt-my-ast $at]
+  of :return
+    return [$name $ast.opt-my-atom $at]
+  of :else
+    return [$name $ast.opt-my-atom $at]
+  of :then
+    return [$name $ast.opt-my-atom $at]
+  of :say
+    return [$name $ast.opt-my-atom $at]
+  of :print
+    return [$name $ast.opt-my-atom $at]
+  of :error
+    return [$name $ast.opt-my-atom $at]
+  of :kstr
+    return [:kstr $ast.rest $at]
+  of :lstr
+    return [:lstr $ast.cut $at]
+  of :const
+    return [:const $ast $at]
+  of :char
+    return $atom
+  of :name
+    return $atom
+  of :sym
+    return $atom
+  of :var
+    return $atom
+  of :int
+    return $atom
+  of :dstr
+    return $atom
+  of :nil
+    return $atom
+  of :bool
+    return $atom
+  of :init
+    return $atom
+  then
+    error "opt my atom miss $name"
+  return $atom
+
+fn opt-my-exprs($ast $at) str
+  return [:block $ast.opt-my-ast $at]
+
+fn opt-my-ofthen($ast $at) str
+  return [:ofthen $ast.opt-my-ast $at]
+
+fn opt-my-str($ast $at) str
+  if $ast.is-str return [:dstr str $at]
+  return [:str $ast $at]
+
+fn opt-my-define($args $at) str
+  my $value $args.atoms.map(value)
+  return [:define [$value] $at]
+
+fn opt-my-func($atoms $at) str
+  my $elems $atoms.atoms.map(value)
+  my [$call $args-type $ret-type] $elems
+  my $name "$call.$args-type"
+  return [:func [$name $ret-type] $at]
+
+fn opt-my-struct($args $at) str
+  my [$name-atom $fields] $args
+  my $name $name-atom.value
+  my $pairs $fields.value.atoms.map(value)
+  return [:struct [$name [$pairs]] $at]
+
+fn opt-my-fn($expr $at) str
+  my [$call $sign $block] $expr
+  my $name $call.value
+  my [$fn-args $ret-atom] $sign.value
+  my $ret $ret-atom.value
+  my $args $fn-args.value
+  my [$type $names] $args.parse-args
+  my $head ["$name.$type" $ret]
+  my $block-atom $block.opt-my-atom
+  my $fn-atom [$head [$names $block-atom]]
+  return [:fn $fn-atom $at]
+
+fn parse-args($args) str
+  if $args.is-str
+    return [:nil :nil]
+  if $args.is-atom 
+    return $args.parse-arg
+  return $args.parse-fn-args
+
+fn parse-arg($args) str
+  my $fnarg $args.value.parse-fn-arg
+  my [$name $type] $fnarg
+  return [$type ["$name:$type"]]
+
+fn parse-fn-args($args) str
+  my $names strs
+  my $types strs
+  for $var $args.atoms {
+    my $arg $var.value
+    my [$name $type] $arg.parse-fn-arg
+    $types << $type
+    $names << "$name:$type"
+  }
+  my $types-str $types.join(':')
+  my $names-estr [$names]
+  return [$types-str $names-estr]
+
+fn parse-fn-arg($arg) str
+  if $arg.has(':') return $arg
+  return "$arg:str"
+
+fn opt-my-my($args $at) str
+  my $opt-args $args.opt-my-ast
+  my [$var $value] $opt-args
+  my [$type $name] $var
+  if $type == :var
+    return [:my [$name $value] $at]
+  my $atoms $name.atoms
+  my $names $atoms.map(value).join(':')
+  my $my-atom [$names $value]
+  return [:mys $my-atom $at]
+
+fn opt-my-for($args $at) str
+  my $opt-args $args.opt-my-ast
+  my [$iter-atom $set $block] $opt-args
+  my $iter $iter-atom.value
+  return [:for [[$iter $set] $block] $at]
+
+fn opt-my-call($ast $at) str
+  my [$atom $call] $ast
+  set $atom $atom.opt-my-atom
+  my [$type $value] $call
+  return $atom.opt-my-calls($type $value $at)
+
+fn opt-my-vars($atom $call $at) str
+  my [$var $ast] $call
+  set $atom [:index [$atom $var] $at]
+  my [$type $value] $ast
+  return $atom.opt-my-calls($type $value $at)
+
+fn opt-my-syms($atom $call $at) str
+  my [$sym $ast] $call
+  my $name $sym.value
+  set $atom $atom.opt-my-ocall($name $at)
+  my [$type $value] $ast
+  return $atom.opt-my-calls($type $value $at)
+
+fn opt-my-args($atom $call $at) str
+  my [$args $ast] $call
+  set $args $args.value
+  set $atom $atom.opt-my-acall($args $at)
+  my [$type $value] $ast
+  return $atom.opt-my-calls($type $value $at)
+
+fn opt-my-calls($atom $type $value $at) str
+  case $type
+  of :sym
+    return $atom.opt-my-ocall($value $at)
+  of :var
+    return $atom.opt-my-icall($value $at)
+  of :args
+    return $atom.opt-my-acall($value $at)
+  of :pcall
+    return $atom.opt-my-pcall($value $at)
+  of :@vars
+    return $atom.opt-my-vars($value $at)
+  of :@args
+    return $atom.opt-my-args($value $at)
+  then return $atom.opt-my-syms($value $at)
+
+fn opt-my-acall($atom $value $at) str
+  my $args $value.opt-my-ast
+  my [$name $var] $atom.value
+  set $args $var.einsert($args)
+  return [:call [$name $args] $at]
+
+fn opt-my-ocall($atom $name $at) str
+  if $atom.name == :nil
+    return [:ncall "$name.nil" $at]
+  return [:ocall [$name $atom] $at]
+
+fn opt-my-icall($atom $value $at) str
+  my $var [:var $value $at]
+  return [:index [$atom $var] $at]
+
+fn opt-my-pcall($atom $value $at) str
+  my [$op $call] $value
+  my $args [$atom $call.opt-my-atom]
+  my $name $op.value
+  return [:pcall [$name $args] $at]
+
+// vim: ft=my

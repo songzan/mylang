@@ -1,0 +1,401 @@
+ns ToPerl
+
+use Core
+use Estr
+use LintMyAst
+
+fn ast-topl($t:Lint $ast) str
+  my $arr $t.atoms-topls($ast)
+  return $arr.join('\n')
+
+fn atoms-topls($t:Lint $atoms) strs
+  my $arr strs
+  for $atom $atoms.atoms {
+    my $s $t.atom-topl($atom)
+    if $s != str $arr << $s
+  }
+  return $arr
+
+fn atoms-topl($t:Lint $atoms) str
+  my $arr $t.atoms-topls($atoms)
+  my $idt $t.get-indent
+  my $sep '\n' + $idt
+  return $arr.join($sep)
+
+fn block-topl($t:Lint $expr) str
+  $t.indent.inc
+  my $s $t.atom-topl($expr)
+  my $idt $t.get-indent
+  $t.indent.dec
+  my $ident $t.get-indent
+  return "{\n$idt$s\n$ident}"
+
+fn call-args-topl($t:Lint $args) str
+  my $arr $t.atoms-topls($args)
+  return $arr.join(',')
+
+fn atom-topl($t:Lint $atom) str
+  my [$name $args] $atom
+  case $name
+  of :ns return $t.ns-topl($args)
+  of :fn return $t.fn-topl($args)
+  of :for return $t.for-topl($args)
+  of :case return $t.case-topl($args)
+  of :ifelse return $t.atoms-topl($args)
+  of :block return $t.atoms-topl($args)
+  of :ofthen return $t.atoms-topl($args)
+  of :of return $t.of-topl($args)
+  of :then return $t.then-topl($args)
+  of :if return $t.if-topl($args)
+  of :else return $t.else-topl($args)
+  of :while return $t.while-topl($args)
+  of :my return $t.my-topl($args)
+  of :mys return $t.mys-topl($args)
+  of :set return $t.set-topl($args)
+  of :say return $t.say-topl($args)
+  of :print return $t.print-topl($args)
+  of :error return $t.error-topl($args)
+  of :return return $t.return-topl($args)
+  of :estr return $t.estr-topl($args)
+  of :index return $t.index-topl($args)
+  of :lstr return "q`$args`"
+  of :ncall return $t.ncall-topl($args)
+  of :ocall return $t.ocall-topl($args)
+  of :pcall return $t.pcall-topl($args)
+  of :call return $t.call-topl($args)
+  of :sym return $args.name-topl
+  of :var return $args.name-topl
+  of :init return $args.init-topl
+  of :str return $args.str-topl
+  of :dstr return $args.dstr-topl
+  of :bool return $args.bool-topl
+  of :const return $t.const-topl($args)
+  of :kstr return "'$args'"
+  of :int return $args
+  of :char return $args.char-topl
+  of :nil return str
+  of :use return str
+  then say "atom to perl miss $name"
+  return str
+
+fn char-topl($str) str
+  if $str.len == 3 return $str
+  my $char $str.cut
+  return "\"$char\""
+
+fn ns-topl($t:Lint $ns) str
+  $t.in-ns($ns) return str
+
+fn fn-topl($t:Lint $ast) str
+  my [$head $atoms] $ast
+  my [$args $exprs] $atoms
+  my $name-type $head.name
+  $t.in-ns($name-type)
+  my $call $name-type.name
+  my $name $call.name-topl
+  $t.indent.inc
+  my $block $t.atom-topl($exprs)
+  $t.indent.dec
+  $t.out-ns
+  if $name == :main
+    return "\ndo {\n$block\n}"
+  if $args == :nil
+    return "\nsub $name {\n  $block\n}"
+  my $args-str $args.fn-args-topl
+  my $dec "  my ($args-str) = @_;"
+  return "\nsub $name {\n$dec\n  $block\n}"
+
+fn fn-args-topl($args) str
+  if $args == :nil return str
+  my $arr $args.atoms.map(name)
+  return $arr.map(name-topl).join(',')
+
+fn for-topl($t:Lint $args) str
+  my [$iter-atom $exprs] $args
+  my $iter $t.iter-topl($iter-atom)
+  $t.in-block
+  my $block $t.block-topl($exprs)
+  $t.out-block
+  return "for $iter $block"
+
+fn iter-topl($t:Lint $atom) str
+  my [$iter-name $set-atom] $atom
+  my $type $t.get-atom-type($set-atom)
+  my $it $iter-name.name-topl
+  my $set $t.atom-topl($set-atom)
+  case $type
+  of :strs return "my $it (@{$set})"
+  of :str return "my $it (chars($set))"
+  then return "my $it (hkeys($set))"
+
+fn case-topl($t:Lint $args) str
+  my $s $t.cond-block-topl($args)
+  return "given $s"
+
+fn of-topl($t:Lint $args) str
+  my $s $t.cond-block-topl($args)
+  return "when $s"
+
+fn then-topl($t:Lint $atom) str
+  my $s $t.block-topl($atom)
+  return "default $s"
+
+fn if-topl($t:Lint $args) str
+  my $s $t.cond-block-topl($args)
+  return "if $s"
+
+fn cond-block-topl($t:Lint $args) str
+  my [$cond-atom $expr] $args
+  my $cond $t.atom-topl($cond-atom)
+  my $block $t.block-topl($expr)
+  return "($cond) $block"
+
+fn else-topl($t:Lint $atom) str
+  my $s $t.block-topl($atom)
+  return "else $s"
+
+fn while-topl($t:Lint $args) str
+  my $s $t.cond-block-topl($args)
+  return "while $s"
+
+fn my-topl($t:Lint $args) str
+  my [$var $value] $args
+  my $var-str $var.name-topl
+  my $value-str $t.atom-topl($value)
+  return "my $var-str = $value-str;"
+
+fn mys-topl($t:Lint $args) str
+  my [$names $value] $args
+  my $vars $names.names.map(name-topl)
+  my $vars-str $vars.join(',')
+  my $type $t.get-atom-type($value)
+  my $vstr $t.atom-topl($value)
+  if $type == :strs
+    return "my ($vars-str) = @{$vstr};"
+  return "my ($vars-str) = @{atoms($vstr)};"
+
+fn set-topl($t:Lint $args) str
+  my $arr $t.atoms-topls($args)
+  my [$var $value] $arr
+  return "$var = $value;"
+
+fn say-topl($t:Lint $atom) str
+  my $s $t.atom-topl($atom)
+  return "say $s;"
+
+fn print-topl($t:Lint $atom) str
+  my $s $t.atom-topl($atom)
+  return "print $s;"
+
+fn error-topl($t:Lint $atom) str
+  my $s $t.atom-topl($atom)
+  return "error($s);"
+
+fn return-topl($t:Lint $atom) str
+  my $s $t.atom-topl($atom)
+  return "return $s;"
+
+fn estr-topl($t:Lint $args) str
+  my $type $t.get-args-type($args)
+  my $s $t.call-args-topl($args)
+  if $type == :strs return "estr($s)"
+  return "estr([$s])"
+
+fn index-topl($t:Lint $args) str
+  my $type $t.get-args-type($args)
+  my [$data $at] $t.atoms-topls($args)
+  case $type
+  of :str:int return "indexat($data, $at)"
+  of :strs:int return "$data\->[$at]"
+  of :chars:int return "$data\->[$at]"
+  then return "$data\->{$at}"
+
+fn ncall-topl($t:Lint $call) str
+  my $type $t.get-ncall-type($call)
+  my $name $call.name.name-topl
+  if $type == :nil return "$name();"
+  return "$name()"
+
+fn ocall-topl($t:Lint $args) str
+  my [$name $value] $args
+  my $type $t.get-atom-type($value)
+  my $s $t.atom-topl($value)
+  if $t.is-field($type $name)
+    return "$s\->{$name}"
+  return $t.call-name-topl($name $s $type)
+
+fn pcall-topl($t:Lint $atom) str
+  my [$name $args] $atom
+  my $type $t.get-args-type($args)
+  my [$a $b] $t.atoms-topls($args)
+  case $name
+  of :+  return $a.add-topl($b $type)
+  of :== return $a.eq-topl($b $type)
+  of :!= return $a.ne-topl($b $type)
+  of :>= return $a.ge-topl($b $type)
+  of :<= return $a.le-topl($b $type)
+  of :>  return $a.gt-topl($b $type)
+  of :<  return $a.lt-topl($b $type)
+  of :<< return "push(@{$a},$b);"
+  of :>> return "unshift(@{$b},$a);"
+  of :+= return "$a += $b;"
+  then return "$a $name $b"
+
+fn eq-topl($a $b $type) str
+  if $type == :int:int return "$a == $b"
+  return "$a eq $b"
+
+fn ne-topl($a $b $type) str
+  if $type == :int:int return "$a != $b"
+  return "$a ne $b"
+
+fn ge-topl($a $b $type) str
+  if $type == :int:int return "$a >= $b"
+  return "$a ge $b"
+
+fn le-topl($a $b $type) str
+  if $type == :int:int return "$a <= $b"
+  return "$a le $b"
+
+fn lt-topl($a $b $type) str
+  if $type == :int:int return "$a < $b"
+  return "$a lt $b"
+
+fn gt-topl($a $b $type) str
+  if $type == :int:int return "$a > $b"
+  return "$a gt $b"
+
+fn add-topl($a $b $type) str
+  case $type
+  of :int:int return "$a + $b"
+  then return "$a . $b"
+
+fn call-topl($t:Lint $atom) str
+  my [$name $args] $atom
+  my $type $t.get-args-type($args)
+  my $arr $t.atoms-topls($args)
+  my $s $arr.join(',')
+  if $name == :map return $arr.map-topl
+  return $t.call-name-topl($name $s $type)
+
+fn map-topl($arr:strs) str
+  my [$list $fn] $arr
+  return "[map { $fn(\$_) } @{$list}]"
+
+fn call-name-topl($t:Lint $name $s $type) str
+  my $name-type "$name.$type"
+  my $ctype $t.get-name-type($name-type)
+  my $pname $name.name-topl
+  case $pname
+  of :len return $s.len-topl($type)
+  of :has return $s.has-topl($type)
+  of :second return $s.second-topl($type)
+  of :tostr return $s.tostr-topl($type)
+  of :first return $s.first-topl($type)
+  of :rest return $s.rest-topl($type)
+  of :shift return "shift(@{$s});"
+  of :dec return "$s -= 1;"
+  of :inc return "$s += 1;"
+  of :not return "!$s"
+  of :chop return "chopstr($s)"
+  of :upper return "uc($s)"
+  of :lower return "lc($s)"
+  of :join return "joinstrs($s)"
+  of :split return "splitstr($s)"
+  then
+    if $ctype == :nil return "$pname($s);"
+    else return "$pname($s)"
+
+fn len-topl($s $type) str
+  case $type
+  of :strs return "len($s)"
+  of :chars return "len($s)"
+  then return "length($s)"
+
+fn has-topl($s $type) str
+  case $type
+  of :str:char return "include($s)"
+  then return "has($s)"
+
+fn second-topl($s $type) str
+  case $type
+  of :strs return "$s\->[1]"
+  then return "second($s)"
+
+fn tostr-topl($s $type) str
+  case $type
+  of :int return "itos($s)"
+  of :char return $s
+  then return "string($s)"
+
+fn first-topl($s $type) str
+  case $type
+  of :str return "first($s)"
+  then return "$s\->[0]"
+
+fn rest-topl($s $type) str
+  case $type
+  of :str return "rest($s)"
+  then return "reststrs($s)"
+
+fn dstr-topl($dstr) str
+  my $s $dstr.dchars-topl
+  return "\"$s\""
+
+fn bool-topl($name) str
+  if $name == :true return :1
+  return :0
+
+fn str-topl($args) str
+  my $arr $args.atoms.map(satom-topl)
+  my $s $arr.tostr
+  return "\"$s\""
+
+fn satom-topl($atom) str
+  my [$type $value] $atom
+  if $type == :dstr
+    return $value.dchars-topl
+  return $value.name-topl
+
+fn dchars-topl($s) str
+  my $buf buffer
+  my $mode 0
+  for $a $s
+    case $mode
+    of 1
+      set $mode 0
+      case $a
+      of '%' $buf << :%%
+      then $buf << '\\' + $a
+    then
+      case $a
+      of '@' $buf << "\\@"
+      of '[' $buf << "\\["
+      of '{' $buf << "\\{"
+      of '\\' set $mode 1
+      then $buf << $a
+  return $buf.tostr
+
+fn init-topl($name) str
+  case $name
+  of :str return "''"
+  of :int return :0
+  of :strs return "[]"
+  of :buffer return "[]"
+  of :table return "{}"
+  of :tree return "{}"
+  then return "{}"
+
+fn const-topl($t:Lint $name) str
+  if $t.is-struct($name) return "{}"
+  return $name
+
+fn name-topl($name) str
+  my $buf buffer
+  for $a $name
+    case $a
+    of '-' $buf << '_'
+    then $buf << $a
+  return $buf.tostr
+
+// vim: ft=my

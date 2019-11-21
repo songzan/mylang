@@ -1,0 +1,341 @@
+ns ToRuby
+
+use Core
+use Estr
+use LintMyAst
+
+fn ast-torb($t:Lint $ast) str
+  my $arr $t.atoms-torbs($ast)
+  return $arr.join('\n')
+
+fn atoms-torbs($t:Lint $atoms) strs
+  my $arr strs
+  for $atom $atoms.atoms {
+    my $s $t.atom-torb($atom)
+    if $s != str $arr << $s
+  }
+  return $arr
+
+fn atoms-torb($t:Lint $atoms) str
+  my $arr $t.atoms-torbs($atoms)
+  return $t.atom-strs-torb($arr)
+
+fn atom-strs-torb($t:Lint $arr:strs) str
+  my $idt $t.get-indent
+  my $sep '\n' + $idt
+  return $arr.join($sep)
+
+fn call-args-torb($t:Lint $args) str
+  my $arr $t.atoms-torbs($args)
+  return $arr.join(',')
+
+fn block-torb($t:Lint $expr) str
+  $t.indent.inc
+  my $s $t.atom-torb($expr)
+  my $idt $t.get-indent
+  $t.indent.dec
+  return "$idt$s"
+
+fn atom-torb($t:Lint $atom) str
+  my [$name $args] $atom
+  case $name
+  of :ns return $t.ns-torb($args)
+  of :fn return $t.fn-torb($args)
+  of :block return $t.atoms-torb($args)
+  of :ofthen return $t.atoms-torb($args)
+  of :for return $t.for-torb($args)
+  of :case return $t.case-torb($args)
+  of :if return $t.if-torb($args)
+  of :while return $t.while-torb($args)
+  of :ifelse return $t.ifelse-torb($args)
+  of :of return $t.of-torb($args)
+  of :then return $t.then-torb($args)
+  of :set return $t.set-torb($args)
+  of :index return $t.index-torb($args)
+  of :my return $t.my-torb($args)
+  of :mys return $t.mys-torb($args)
+  of :return return $t.return-torb($args)
+  of :say return $t.say-torb($args)
+  of :print return $t.print-torb($args)
+  of :error return $t.error-torb($args)
+  of :estr return $t.estr-torb($args)
+  of :ncall return $args.ncall-torb
+  of :ocall return $t.ocall-torb($args)
+  of :pcall return $t.pcall-torb($args)
+  of :call return $t.call-torb($args)
+  of :const return $t.const-torb($args)
+  of :sym return $args.name-torb
+  of :var return $args.name-torb
+  of :init return $args.init-torb
+  of :str return $args.str-torb
+  of :dstr return $args.dstr-torb
+  of :lstr return "<<STR\n$args\nSTR"
+  of :kstr return "'$args'"
+  of :bool return $args
+  of :nil return $args
+  of :char return $args.char-torb
+  of :int return $args
+  of :use return str
+  then say "atom to ruby miss $name"
+  return str
+
+fn char-torb($str) str
+  if $str.len == 3 return $str
+  my $char $str.cut
+  return "\"$char\""
+
+fn ns-torb($t:Lint $ns) str
+  $t.in-ns($ns) return str
+
+fn fn-torb($t:Lint $ast) str
+  my [$head $atoms] $ast
+  my [$args $exprs] $atoms
+  my $name-type $head.name
+  $t.in-ns($name-type)
+  my $name $name-type.name.name-torb
+  my $args-str $args.fn-args-torb
+  my $block $t.block-torb($exprs)
+  $t.out-ns
+  if $name == :main
+    return "begin\n$block\nend"
+  my $head-str "\ndef $name($args-str)"
+  return "$head-str\n$block\nend"
+
+fn fn-args-torb($args) str
+  if $args == :nil return str
+  my $arr $args.atoms.map(name)
+  return $arr.map(name-torb).join(',')
+
+fn for-torb($t:Lint $args) str
+  my [$iter-expr $exprs] $args
+  my $iter-str $t.iter-torb($iter-expr)
+  $t.in-block
+  my $s $t.block-torb($exprs)
+  $t.out-block
+  my $end $t.get-end
+  return "$iter-str\n$s\n$end"
+
+fn iter-torb($t:Lint $atom) str
+  my [$iter-name $set-atom] $atom
+  my $type $t.get-atom-type($set-atom)
+  my $iter $iter-name.name-torb
+  my $set $t.atom-torb($set-atom)
+  case $type
+  of :strs return "$set.each do |$iter|"
+  of :str return "$set.each_char do |$iter|"
+  then return "$set.keys.each do |$iter|"
+
+fn case-torb($t:Lint $args) str
+  my [$cond $exprs] $t.cond-block-torb($args)
+  my $end $t.get-end
+  return "case ($cond)\n$exprs\n$end"
+
+fn of-torb($t:Lint $args) str
+  my [$cond $exprs] $t.cond-block-torb($args)
+  return "when $cond then\n$exprs"
+
+fn then-torb($t:Lint $args) str
+  my $s $t.block-torb($args)
+  return "else\n$s"
+
+fn ifelse-torb($t:Lint $exprs) str
+  my $arr strs
+  for $expr $exprs.atoms
+     $arr << $t.expr-torb($expr)
+  $arr << :end
+  return $t.atom-strs-torb($arr)
+
+fn expr-torb($t:Lint $expr) str
+  my [$name $value] $expr
+  if $name == :if
+    return $t.if-if-torb($value)
+  return $t.else-torb($value)
+
+fn if-torb($t:Lint $args) str
+  my [$cond $exprs] $t.cond-block-torb($args)
+  my $end $t.get-end
+  return "if $cond then\n$exprs\n$end"
+
+fn if-if-torb($t:Lint $args) str
+  my [$cond $exprs] $t.cond-block-torb($args)
+  return "if $cond then\n$exprs"
+
+fn cond-block-torb($t:Lint $args) str
+  my [$cond $exprs] $args
+  my $cond-str $t.atom-torb($cond)
+  my $exprs-str $t.block-torb($exprs)
+  return [$cond-str $exprs-str]
+
+fn else-torb($t:Lint $exprs) str
+  my $s $t.block-torb($exprs)
+  return "else\n$s"
+
+fn while-torb($t:Lint $args) str
+  my [$cond $exprs] $t.cond-block-torb($args)
+  my $end $t.get-end
+  return "while $cond do\n$exprs\n$end"
+
+fn my-torb($t:Lint $args) str
+  my [$var $value] $args
+  my $var-str $var.name-torb
+  my $vstr $t.atom-torb($value)
+  return "$var-str = $vstr"
+
+fn set-torb($t:Lint $args) str
+  my $arr $t.atoms-torbs($args)
+  my [$var $value] $arr
+  return "$var = $value"
+
+fn index-torb($t:Lint $args) str
+  my [$data $at] $t.atoms-torbs($args)
+  return "$data[$at]"
+
+fn mys-torb($t:Lint $args) str
+  my [$vars $value] $args
+  my $names $vars.names.map(name-torb)
+  my $nstr $names.join(',')
+  my $vstr $t.atom-torb($value)
+  my $type $t.get-atom-type($value)
+  if $type == :strs return "$nstr = $vstr"
+  return "$nstr = atoms($vstr)"
+
+fn return-torb($t:Lint $atom) str
+  my $s $t.atom-torb($atom)
+  return "return $s"
+
+fn say-torb($t:Lint $atom) str
+  my $s $t.atom-torb($atom)
+  return "p $s"
+
+fn print-torb($t:Lint $atom) str
+  my $s $t.atom-torb($atom)
+  return "print($s)"
+
+fn error-torb($t:Lint $atom) str
+  my $s $t.atom-torb($atom)
+  return "error($s)"
+
+fn ncall-torb($call) str
+  my $name $call.name.name-torb
+  return "$name()"
+
+fn estr-torb($t:Lint $args) str
+  my $type $t.get-args-type($args)
+  my $s $t.call-args-torb($args)
+  case $type
+  of :strs return "estr($s)"
+  then return "estr([$s])"
+
+fn ocall-torb($t:Lint $args) str
+  my [$name $value] $args
+  my $type $t.get-atom-type($value)
+  my $s $t.atom-torb($value)
+  if $t.is-field($type $name)
+    return "$s['$name']"
+  return $name.call-name-torb($s $type)
+
+fn pcall-torb($t:Lint $atom) str
+  my [$name $args] $atom
+  my [$a $b] $t.atoms-torbs($args)
+  case $name
+  of :>> return "$b.unshift($a)"
+  then return "$a $name $b"
+
+fn call-torb($t:Lint $atom) str
+  my [$name $args] $atom
+  my $arr $t.atoms-torbs($args)
+  if $name == :map return $arr.map-torb
+  my $s $arr.join(',')
+  my $type $t.get-args-type($args)
+  return $name.call-name-torb($s $type)
+
+fn map-torb($arr:strs) str
+  my [$array $fn] $arr
+  return "$array.map { |n| $fn(n) }"
+
+fn call-name-torb($name $s $type) str
+  my $rname $name.name-torb
+  case $name
+  of :tostr return $s.tostr-torb($type)
+  of :has return $s.has-torb($type)
+  of :trim return "$s.strip"
+  of :len return "$s.length"
+  of :shift return "$s.shift"
+  of :dec return "$s -= 1"
+  of :inc return "$s += 1"
+  of :upper return "$s.upcase"
+  of :lower return "$s.downcase"
+  of :tochars return "to_chars($s)"
+  then return "$rname($s)"
+
+fn tostr-torb($s $type) str
+  case $type
+  of :int return "itos($s)"
+  of :char return $s
+  then return "to_string($s)"
+
+fn has-torb($s $type) str
+  case $type
+  of :str:char return "find($s)"
+  of :str:str return "find($s)"
+  then return "has($s)"
+
+fn const-torb($t:Lint $name) str
+  if $t.is-struct($name) return "{}"
+  return $name
+
+fn init-torb($name) str
+  case $name
+  of :int return "0"
+  of :str return "''"
+  of :strs return "[]"
+  of :buffer return "[]"
+  of :table return "{}"
+  of :tree return "{}"
+  then return "{}"
+
+fn name-torb($name) str
+  my $buf buffer
+  for $a $name
+    case $a
+    of '-' $buf << '_'
+    of '$' $buf << '_'
+    then $buf << $a
+  return $buf.tostr
+
+fn str-torb($args) str
+  my $arr $args.atoms.map(satom-torb)
+  my $s $arr.tostr
+  return "\"$s\""
+
+fn satom-torb($atom) str
+  my [$type $value] $atom
+  case $type
+  of :var
+    my $name $value.name-torb
+    return "#{$name}"
+  then return $value.dchars-torb
+
+fn dchars-torb($s) str
+  my $buf buffer
+  my $mode 0
+  for $a $s
+    case $mode
+    of 1
+      set $mode 0
+      case $a
+      of '$' $buf << $a
+      of '-' $buf << $a
+      then $buf << '\\' + $a
+    then
+      case $a
+      of '#' $buf << "\\#"
+      of '\\' set $mode 1
+      then $buf << $a
+  return $buf.tostr
+
+fn dstr-torb($dstr) str
+  my $s $dstr.dchars-torb
+  return "\"$s\""
+
+// vim: ft=my

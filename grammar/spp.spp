@@ -1,0 +1,94 @@
+// grammar spp
+
+top
+ | ( _s | spec )+ EOF
+ ;
+
+_s
+ | \s+
+ | '//' ~ \v
+ ;
+
+spec
+ | name [|=] @branch ( ';' | EOF )
+ ;
+
+name
+ | { [@\a_] [-_\a]* }
+ ;
+
+@branch
+ | @rules ( '|' @rules? )*
+ ;
+
+@rules
+ | ( \s | @rept )+
+ ;
+
+@rept
+ | @rule rept?
+ ;
+
+@rule
+ | _s
+ | @group
+ | @chars
+ | class
+ | cclass
+ | str
+ | not
+ | till
+ | name
+ | word
+ | anychar
+ ;
+
+@group
+ | '(' @branch ')'
+ ;
+
+rept
+ | [?*+] | \d+
+ ;
+
+@chars
+ | '{' ( _s | @rept )+ '}'
+ ;
+
+anychar
+ | { '<' ~ '>' }
+ ;
+
+str
+ | { ['] ~ ['] }
+ ;
+
+class
+ | { \e \S }
+ ;
+
+cclass
+ | { '[' ( @range | class )+ ']' }
+ ;
+
+@range
+ | { char ( '-' char )? }
+ ;
+
+char
+ | ! [\]\e]
+ ;
+
+not
+ | '!' ( cclass | class | str )
+ ;
+
+till
+ | '~' @rule
+ ;
+
+word
+ | { ':' \w+ }
+ ;
+
+// vim: ft=spp

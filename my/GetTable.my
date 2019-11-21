@@ -1,0 +1,144 @@
+ns GetTable
+
+use Core
+use Estr
+use SppAst
+use Match
+use OptSppMatch
+use OptMyMatch
+    
+fn get-table($lang) table
+  my $ast nil.get-spp-ast
+  my $estr $ast.from-ejson
+  my $t $estr.ast-to-table
+  return $t.get-lang-table($lang)
+
+fn ast-to-table($ast) table
+  my $t table
+  for $spec $ast.atoms {
+    my [$name $rule] $spec
+    set $t.$name $rule
+  }
+  return $t
+
+fn get-lang-table($t:table $lang) table
+  my $file $lang.get-grammar-file
+  my $grammar $file.readfile
+  my $match $grammar.match-table($t)
+  my $ast $match.opt-spp-match
+  $ast.lint-spp-ast($lang)
+  return $ast.ast-to-table
+
+fn get-grammar-file($lang) str
+  my $file "$lang.spp"
+  if $file.isfile return $file
+  return "grammar/$file"
+
+fn spp-repl($top) nil
+  my $t :spp.get-table
+  say "Spp <$top> REPL, type 'exit' exit."
+  while true {
+    print ">> "
+    my $line nil.readline.trim
+    if $line == :exit return nil
+    my $match $line.match-door($t $top)
+    say $match.clean.to-ejson
+    say $match.opt-spp-match.to-ejson
+  }
+
+fn my-repl($top) nil
+  my $t :my.get-table
+  say "My <$top> REPL, type :exit exit."
+  while true {
+    print ">> "
+    my $line nil.readline.trim
+    if $line == :exit return nil
+    my $match $line.match-door($t $top)
+    say $match.clean.to-ejson
+    say $match.opt-my-match.clean.to-ejson
+  }
+
+fn lang-repl($lang $top) nil
+  my $t $lang.get-table
+  say "$lang <$top> REPL, type :exit exit."
+  while true {
+    print ">> "
+    my $line nil.readline.trim
+    if $line == :exit return nil
+    my $match $line.match-door($t $top)
+    say $match.clean.to-ejson
+  }
+
+fn get-ast($lang) str
+  my $boot-ast nil.get-spp-ast
+  my $estr $boot-ast.from-ejson
+  my $t $estr.ast-to-table
+  my $file "grammar/$lang.spp"
+  my $grammar $file.readfile
+  my $match $grammar.match-table($t)
+  my $ast $match.opt-spp-match
+  $ast.lint-spp-ast($lang)
+  return $ast.to-ejson
+
+fn lint-spp-ast($ast $lang) nil
+  my $t table
+  my $rules strs
+  for $atom $ast.atoms
+    $rules << $t.regist-rule($atom $lang)
+  $t.lint-spp-rules($rules $lang)
+  $t.lint-spp-table($lang)
+
+fn lint-spp-rules($t:table $rules:strs $lang) nil
+  for $rule $rules
+    $t.lint-spp-rule($rule $lang)
+
+fn lint-spp-table($t:table $lang) nil
+  for $name $t
+    if $t.$name == :ok
+      say "$lang token $name not use"
+
+fn regist-rule($t:table $ast $lang) str
+  my [$name $rule] $ast
+  if $t.has($name)
+    error "$lang re-define rule $name"
+  if $name == :top set $t.$name :use
+  else set $t.$name :ok
+  return $rule
+
+fn lint-spp-rule($t:table $rule $lang) nil
+  my [$name $value] $rule
+  case $name
+  of :ntoken
+    $t.lint-spp-token($value $lang)
+  of :rtoken
+    $t.lint-spp-token($value $lang)
+  of :gtoken
+    $t.lint-spp-token($value $lang)
+  of :more
+    $t.lint-spp-rule($value $lang)
+  of :many
+    $t.lint-spp-rule($value $lang)
+  of :maybe
+    $t.lint-spp-rule($value $lang)
+  of :not
+    $t.lint-spp-rule($value $lang)
+  of :till
+    $t.lint-spp-rule($value $lang)
+  of :rules
+    $t.lint-spp-atoms($value $lang)
+  of :group
+    $t.lint-spp-atoms($value $lang)
+  of :chars
+    $t.lint-spp-atoms($value $lang)
+  of :branch
+    $t.lint-spp-atoms($value $lang)
+
+fn lint-spp-token($t:table $name $lang) nil
+  if $t.has($name) set $t.$name :use
+  else error "$lang not define rule $name"
+
+fn lint-spp-atoms($t:table $atoms $lang) nil
+  for $rule $atoms.atoms
+    $t.lint-spp-rule($rule $lang)
+
+// vim: ft=my

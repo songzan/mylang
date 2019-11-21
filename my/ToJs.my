@@ -1,0 +1,337 @@
+ns ToJs
+
+use Core
+use Estr
+use LintMyAst
+
+fn ast-tojs($t:Lint $ast) str
+  my $arr $t.atoms-tojss($ast)
+  return $arr.join('\n')
+
+fn atoms-tojss($t:Lint $atoms) strs
+  my $arr strs
+  for $atom $atoms.atoms {
+    my $s $t.atom-tojs($atom)
+    if $s != str $arr << $s
+  }
+  return $arr
+
+fn atoms-tojs($t:Lint $atoms) str
+  my $arr $t.atoms-tojss($atoms)
+  my $idt $t.get-indent
+  my $sep '\n' + $idt
+  return $arr.join($sep)
+
+fn block-tojs($t:Lint $expr) str
+  my $idt $t.get-indent
+  $t.indent.inc
+  my $s $t.atom-tojs($expr)
+  my $indent $t.get-indent
+  $t.indent.dec
+  return "{\n$indent$s\n$idt}"
+
+fn exprs-tojs($t:Lint $expr) str
+  $t.indent.inc
+  my $s $t.atom-tojs($expr)
+  $t.indent.dec
+  return $s
+
+fn call-args-tojs($t:Lint $args) str
+  my $arr $t.atoms-tojss($args)
+  return $arr.join(',')
+
+fn atom-tojs($t:Lint $atom) str
+  my [$name $args] $atom
+  case $name
+  of :ns return $t.ns-tojs($args)
+  of :fn return $t.fn-tojs($args)
+  of :for return $t.for-tojs($args)
+  of :case return $t.case-tojs($args)
+  of :of return $t.of-tojs($args)
+  of :then return $t.then-tojs($args)
+  of :if return $t.if-tojs($args)
+  of :ifelse return $t.atoms-tojs($args)
+  of :block return $t.atoms-tojs($args)
+  of :ofthen return $t.atoms-tojs($args)
+  of :else return $t.else-tojs($args)
+  of :while return $t.while-tojs($args)
+  of :set return $t.set-tojs($args)
+  of :my return $t.my-tojs($args)
+  of :mys return $t.mys-tojs($args)
+  of :return return $t.return-tojs($args)
+  of :say return $t.say-tojs($args)
+  of :print return $t.print-tojs($args)
+  of :error return $t.error-tojs($args)
+  of :estr return $t.estr-tojs($args)
+  of :const return $t.const-tojs($args)
+  of :index return $t.index-tojs($args)
+  of :init return $args.init-tojs
+  of :sym return $args.name-tojs
+  of :var return $args.name-tojs
+  of :str return $t.str-tojs($args)
+  of :dstr return $args.dstr-tojs
+  of :ncall return $args.ncall-tojs
+  of :ocall return $t.ocall-tojs($args)
+  of :call return $t.call-tojs($args)
+  of :pcall return $t.pcall-tojs($args)
+  of :lstr return "`$args`"
+  of :kstr return "'$args'"
+  of :int return $args
+  of :bool return $args
+  of :char return $args
+  of :nil return "null"
+  of :use return str
+  then say "atom to Js miss $name"
+  return str
+
+fn ns-tojs($t:Lint $ns) str
+  $t.in-ns($ns)
+  return str
+
+fn fn-tojs($t:Lint $ast) str
+  my [$head $atoms] $ast
+  my [$args $exprs] $atoms
+  my $name-type $head.name
+  $t.in-ns($name-type)
+  my $name $name-type.name.name-tojs
+  my $args-str $args.fn-args-tojs
+  my $block $t.block-tojs($exprs)
+  $t.out-ns
+  if $name == :main
+    return "do $block while (false)"
+  return "\nfunction $name($args-str) $block"
+
+fn fn-args-tojs($args) str
+  if $args == :nil return str
+  my $names $args.atoms.map(name)
+  my $arr $names.map(name-tojs)
+  return $arr.join(',')
+
+fn for-tojs($t:Lint $args) str
+  my [$iter-atom $expr] $args
+  my $iter $t.iter-tojs($iter-atom)
+  $t.in-block
+  my $block $t.exprs-tojs($expr)
+  $t.out-block
+  my $idt $t.get-indent
+  return "for ($iter) {$block\n$idt}"
+
+fn iter-tojs($t:Lint $atom) str
+  my [$iter-name $set-atom] $atom
+  my $iter $iter-name.name-tojs
+  my $type $t.get-atom-type($set-atom)
+  my $set $t.atom-tojs($set-atom)
+  case $type
+  of :table
+    return "let $iter of Object.keys($set)"
+  of :tree
+    return "let $iter of Object.keys($set)"
+  then return "let $iter of $set"
+
+fn case-tojs($t:Lint $args) str
+  my $s $t.cond-expr-tojs($args)
+  return "switch $s"
+
+fn of-tojs($t:Lint $args) str
+  my $arr $t.atoms-tojss($args)
+  my [$cond $exprs] $arr
+  return "case $cond: $exprs; break;"
+
+fn cond-tojs($t:Lint $args) str
+  my $arr $t.atoms-tojss($args)
+  return $arr.join(": case ")
+
+fn then-tojs($t:Lint $exprs) str
+  my $s $t.exprs-tojs($exprs)
+  return "default: $s"
+
+fn if-tojs($t:Lint $args) str
+  my $s $t.cond-expr-tojs($args)
+  return "if $s"
+
+fn cond-expr-tojs($t:Lint $args) str
+  my [$cond-atom $expr] $args
+  my $cond $t.atom-tojs($cond-atom)
+  my $block $t.block-tojs($expr)
+  return "($cond) $block"
+
+fn else-tojs($t:Lint $exprs) str
+  my $s $t.block-tojs($exprs)
+  return "else $s"
+
+fn while-tojs($t:Lint $args) str
+  my $s $t.cond-expr-tojs($args)
+  return "while $s"
+
+fn set-tojs($t:Lint $args) str
+  my $arr $t.atoms-tojss($args)
+  my [$var $value] $arr
+  return "$var = $value;"
+
+fn my-tojs($t:Lint $args) str
+  my [$var $value] $args
+  my $name $var.name-tojs
+  my $value-str $t.atom-tojs($value)
+  return "let $name = $value-str;"
+
+fn mys-tojs($t:Lint $args) str
+  my [$vars $value] $args
+  my $names $vars.names.map(name-tojs)
+  my $vars-str $names.join(',')
+  my $type $t.get-atom-type($value)
+  my $vstr $t.atom-tojs($value)
+  if $type == :strs
+    return "let [$vars-str] = $vstr"
+  return "let [$vars-str] = atoms($vstr)"
+
+fn return-tojs($t:Lint $atom) str
+  my $s $t.atom-tojs($atom)
+  return "return $s"
+
+fn say-tojs($t:Lint $atom) str
+  my $s $t.atom-tojs($atom)
+  return "say($s);"
+
+fn print-tojs($t:Lint $atom) str
+  my $s $t.atom-tojs($atom)
+  return "print($s);"
+
+fn error-tojs($t:Lint $atom) str
+  my $s $t.atom-tojs($atom)
+  return "error($s);"
+
+fn estr-tojs($t:Lint $args) str
+  my $type $t.get-args-type($args)
+  my $s $t.call-args-tojs($args)
+  case $type
+  of :strs return "estr($s)"
+  then return "estr([$s])"
+
+fn const-tojs($t:Lint $name) str
+  if $t.is-struct($name) return "{}"
+  return $name
+
+fn init-tojs($name) str
+  case $name
+  of :int return "0"
+  of :str return "''"
+  of :buffer return "[]"
+  of :strs return "[]"
+  of :table return "{}"
+  of :tree return "{}"
+  then return "{}"
+
+fn name-tojs($name) str
+  my $buf buffer
+  for $a $name
+    case $a
+    of '-' $buf << '_'
+    of '$' $buf << 's'
+    then $buf << $a
+  return $buf.tostr
+
+fn str-tojs($t:Lint $args) str
+  my $buf buffer
+  for $atom $args.atoms
+    $buf << $atom.satom-tojs
+  my $format $buf.tostr
+  return "`$format`"
+
+fn satom-tojs($atom) str
+  my [$name $value] $atom
+  case $name
+  of :var
+    my $var $value.name-tojs
+    return "\${$var}"
+  then return $value.dchars-tojs
+
+fn dstr-tojs($dstr) str
+  my $s $dstr.dchars-tojs
+  return "\"$s\""
+
+fn dchars-tojs($s) str
+  my $buf buffer
+  my $mode 0
+  for $a $s
+    case $mode
+    of 1
+      set $mode 0
+      case $a
+      of '-' $buf << $a
+      of '[' $buf << $a
+      then $buf << '\\' + $a
+    then
+      case $a
+      of '\\' set $mode 1
+      of '`' $buf << '\\' + $a
+      then $buf << $a
+  return $buf.tostr
+
+fn ncall-tojs($call) str
+  my $name $call.name.name-tojs
+  return "$name()"
+
+fn ocall-tojs($t:Lint $args) str
+  my [$call $value] $args
+  my $type $t.get-atom-type($value)
+  my $s $t.atom-tojs($value)
+  my $name $call.name-tojs
+  if $t.is-field($type $call)
+    return "$s.$name"
+  return $name.call-name-tojs($s $type)
+
+fn call-tojs($t:Lint $atom) str
+  my [$call $args] $atom
+  my $name $call.name-tojs
+  my $type $t.get-args-type($args)
+  my $s $t.call-args-tojs($args)
+  return $name.call-name-tojs($s $type)
+
+fn index-tojs($t:Lint $args) str
+  my [$a $b] $t.atoms-tojss($args)
+  return "$a[$b]"
+
+fn pcall-tojs($t:Lint $atom) str
+  my [$name $args] $atom
+  my [$a $b] $t.atoms-tojss($args)
+  case $name
+  of :<< return "$a.push($b)"
+  of :>> return "$b.unshift($a)"
+  of :== return "$a === $b"
+  of :!= return "$a !== $b"
+  of :+= return "$a += $b;"
+  then return "$a $name $b"
+
+fn call-name-tojs($name $s $type) str
+  case $name
+  of :tostr return $s.tostr-tojs($type)
+  of :has return $s.has-tojs($type)
+  of :rest return $s.rest-tojs($type)
+  of :first return "$s[0]"
+  of :second return "$s[1]"
+  of :dec return "$s --;"
+  of :inc return "$s++;"
+  of :not return "!$s"
+  of :len return "$s.length"
+  of :shift return "$s.shift()"
+  of :toint return "parseInt($s)"
+  then return "$name($s)"
+
+fn tostr-tojs($s $type) str
+  case $type
+  of :int return "itos($s)"
+  of :char return $s
+  then return "tostr($s)"
+
+fn has-tojs($s $type) str
+  case $type
+  of :str:char return "hasStr($s)"
+  of :strs:str return "hasStr($s)"
+  then return "hasKey($s)"
+
+fn rest-tojs($s $type) str
+  case $type
+  of :str return "rest($s)"
+  then return "reststrs($s)"
+
+// vim: ft=my

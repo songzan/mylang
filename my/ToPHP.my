@@ -1,0 +1,390 @@
+ns ToPHP
+
+use Core
+use Estr
+use LintMyAst
+
+fn ast-tophp($t:Lint $ast) str
+  my $arr $t.atoms-tophps($ast)
+  my $s $arr.join('\n')
+  return "<?php\n$s\n?>"
+
+fn atoms-tophps($t:Lint $atoms) strs
+  my $arr strs
+  for $atom $atoms.atoms {
+    my $s $t.atom-tophp($atom)
+    if $s != str $arr << $s
+  }
+  return $arr
+
+fn atoms-tophp($t:Lint $atoms) str
+  my $arr $t.atoms-tophps($atoms)
+  return $t.atom-strs-tophp($arr)
+
+fn atom-strs-tophp($t:Lint $arr:strs) str
+  my $idt $t.get-indent
+  my $sep '\n' + $idt
+  return $arr.join($sep)
+
+fn block-tophp($t:Lint $expr) str
+  my $idt $t.get-indent
+  $t.indent.inc
+  my $s $t.atom-tophp($expr)
+  my $inc-idt $t.get-indent
+  $t.indent.dec
+  return "{\n$inc-idt$s\n$idt}"
+
+fn exprs-tophp($t:Lint $expr) str
+  $t.indent.inc
+  my $s $t.atom-tophp($expr)
+  $t.indent.dec
+  return $s
+
+fn atom-tophp($t:Lint $atom) str
+  my [$name $args] $atom
+  case $name
+  of :ns return $t.ns-tophp($args)
+  of :fn return $t.fn-tophp($args)
+  of :for return $t.for-tophp($args)
+  of :case return $t.case-tophp($args)
+  of :of return $t.of-tophp($args)
+  of :then return $t.then-tophp($args)
+  of :if return $t.if-tophp($args)
+  of :ifelse return $t.atoms-tophp($args)
+  of :block return $t.atoms-tophp($args)
+  of :ofthen return $t.atoms-tophp($args)
+  of :else return $t.else-tophp($args)
+  of :while return $t.while-tophp($args)
+  of :set return $t.set-tophp($args)
+  of :my return $t.my-tophp($args)
+  of :mys return $t.mys-tophp($args)
+  of :return return $t.return-tophp($args)
+  of :say return $t.say-tophp($args)
+  of :print return $t.print-tophp($args)
+  of :error return $t.error-tophp($args)
+  of :estr return $t.estr-tophp($args)
+  of :pcall return $t.pcall-tophp($args)
+  of :ocall return $t.ocall-tophp($args)
+  of :call return $t.call-tophp($args)
+  of :index return $t.index-tophp($args)
+  of :ncall return $t.ncall-tophp($args)
+  of :sym return $args.name-tophp
+  of :var return $args.name-tophp
+  of :init return $args.init-tophp
+  of :const return $t.const-tophp($args)
+  of :str return $args.str-tophp
+  of :dstr return $args.dstr-tophp
+  of :lstr return "<<<'STR'\n$args\nSTR"
+  of :int return $args
+  of :bool return $args
+  of :char return $args.char-tophp
+  of :kstr return "'$args'"
+  of :nil return :null
+  of :use return str
+  then say "atom tophp miss $name"
+  return str
+
+fn char-tophp($str) str
+  if $str.len == 3 return $str
+  my $char $str.cut
+  return "\"$char\""
+
+fn ns-tophp($t:Lint $ns) str
+  $t.in-ns($ns)
+  return str
+
+fn fn-tophp($t:Lint $ast) str
+  my [$head $atoms] $ast
+  my [$args $block] $atoms
+  my $name-type $head.name
+  $t.in-ns($name-type)
+  my $name $name-type.name.name-tophp
+  my $args-str $t.fn-args-tophp($args)
+  my $block-str $t.block-tophp($block)
+  $t.out-ns
+  if $name == :main
+    return "do $block-str while (False);"
+  my $declare "function $name($args-str)"
+  return "\n$declare $block-str"
+
+fn fn-args-tophp($t:Lint $args) str
+  if $args == :nil return str
+  my $arr $args.atoms.map(fn-arg-tophp)
+  return $arr.join(',')
+
+fn fn-arg-tophp($arg) str
+  my [$var $type] $arg
+  my $name $var.name-tophp
+  case $type
+  of :table return "&$name"
+  of :tree return "&$name"
+  of :Lint return "&$name"
+  of :Cursor return "&$name"
+  then return $name
+
+fn for-tophp($t:Lint $args) str
+  my [$iter $block] $args
+  my $iter-str $t.iter-tophp($iter)
+  $t.in-block
+  my $block-str $t.block-tophp($block)
+  $t.out-block
+  return "foreach ($iter-str) $block-str"
+
+fn iter-tophp($t:Lint $atom) str
+  my [$iter-name $set-atom] $atom
+  my $type $t.get-atom-type($set-atom)
+  my $iter $iter-name.name-tophp
+  my $set $t.atom-tophp($set-atom)
+  case $type
+  of :strs return "$set as $iter"
+  of :str return "tochars($set) as $iter"
+  then return "array_keys($set) as $iter"
+
+fn case-tophp($t:Lint $args) str
+  my $s $t.cond-exprs-tophp($args)
+  return "switch $s"
+
+fn of-tophp($t:Lint $args) str
+  my [$cond $exprs] $args
+  my $cond-str $t.atom-tophp($cond)
+  my $block $t.exprs-tophp($exprs)
+  return "case $cond-str: $block; break;"
+
+fn then-tophp($t:Lint $args) str
+  my $s $t.exprs-tophp($args)
+  return "default: $s;"
+
+fn if-tophp($t:Lint $exprs) str
+  my $s $t.cond-exprs-tophp($exprs)
+  return "if $s"
+
+fn else-tophp($t:Lint $exprs) str
+  my $s $t.block-tophp($exprs)
+  return "else $s"
+
+fn cond-exprs-tophp($t:Lint $args) str
+  my [$cond $exprs] $args
+  my $cond-str $t.atom-tophp($cond)
+  my $exprs-str $t.block-tophp($exprs)
+  return "($cond-str) $exprs-str"
+
+fn while-tophp($t:Lint $args) str
+  my $s $t.cond-exprs-tophp($args)
+  return "while $s"
+
+fn set-tophp($t:Lint $args) str
+  my $arr $t.atoms-tophps($args)
+  my [$a $b] $arr
+  return "$a = $b;"
+
+fn my-tophp($t:Lint $args) str
+  my [$var $value] $args
+  my $type $t.get-atom-type($value)
+  my $vstr $t.atom-tophp($value)
+  my $name $var.name-tophp
+  if $vstr == "[]" return "$name = $vstr;"
+  case $type
+  of :tree return "$name = &$vstr;"
+  of :table return "$name = &$vstr;"
+  then return "$name = $vstr;"
+
+fn mys-tophp($t:Lint $args) str
+  my [$vars $value] $args
+  my $names $vars.names.map(name-tophp)
+  my $nstr $names.join(',')
+  my $vstr $t.atom-tophp($value)
+  my $type $t.get-atom-type($value)
+  if $type == :strs
+    return "list($nstr) = $vstr;"
+  return "list($nstr) = atoms($vstr);"
+
+fn return-tophp($t:Lint $atom) str
+  my $s $t.atom-tophp($atom)
+  return "return $s;"
+
+fn say-tophp($t:Lint $atom) str
+  my $s $t.atom-tophp($atom)
+  return "say($s);"
+
+fn print-tophp($t:Lint $atom) str
+  my $s $t.atom-tophp($atom)
+  return "print($s);"
+
+fn error-tophp($t:Lint $atom) str
+  my $s $t.atom-tophp($atom)
+  return "error($s);"
+
+fn estr-tophp($t:Lint $args) str
+  my $type $t.get-args-type($args)
+  my $arr $t.atoms-tophps($args)
+  my $s $arr.join(',')
+  if $type == :strs return "estr($s)"
+  return "estr(array($s))"
+
+fn init-tophp($name) str
+  case $name
+  of :int return :0
+  of :str return "''"
+  then return "[]"
+  
+fn const-tophp($t:Lint $name) str
+  if $t.is-struct($name) return "[]"
+  return $name
+
+fn name-tophp($name) str
+  my $buf buffer
+  for $a $name
+    case $a
+    of '-' $buf << '_'
+    then $buf << $a
+  return $buf.tostr
+
+fn str-tophp($args) str
+  my $arr $args.atoms.map(satom-tophp)
+  my $s $arr.tostr
+  return "\"$s\""
+
+fn satom-tophp($atom) str
+  my [$type $value] $atom
+  if $type == :dstr
+    return $value.dchars-tophp
+  return $value.name-tophp
+
+fn dstr-tophp($dstr) str
+  my $s $dstr.dchars-tophp
+  return "\"$s\""
+
+fn dchars-tophp($s) str
+  my $buf buffer
+  my $mode 0
+  for $a $s
+    case $mode
+    of 1
+      set $mode 0
+      case $a
+      of '-' $buf << $a
+      of '$' $buf << $a
+      of '[' $buf << $a
+      of '{' $buf << $a
+      of '%' $buf << :%%
+      then $buf << '\\' + $a
+    then
+      case $a
+      of '\\' set $mode 1
+      of '[' $buf << "\\["
+      of '{' $buf << "\\{"
+      then $buf << $a
+  return $buf.tostr
+
+fn ncall-tophp($t:Lint $call) str
+  my $type $t.get-ncall-type($call)
+  my $name $call.name.name-tophp
+  if $name == :osargs
+    return "array_slice(\$argv,1)"
+  if $type == :nil return "$name();"
+  return "$name()"
+
+fn ocall-tophp($t:Lint $args) str
+  my [$name $value] $args
+  my $type $t.get-atom-type($value)
+  my $s $t.atom-tophp($value)
+  if $t.is-field($type $name)
+    return "$s['$name']"
+  return $t.call-name-tophp($name $s $type)
+
+fn index-tophp($t:Lint $args) str
+  my [$data $at] $t.atoms-tophps($args)
+  return "$data[$at]"
+
+fn pcall-tophp($t:Lint $atom) str
+  my [$name $args] $atom
+  my $type $t.get-args-type($args)
+  my [$a $b] $t.atoms-tophps($args)
+  case $name
+  of :+ return $a.add-tophp($b $type)
+  of :<< return "array_push($a,$b);"
+  of :>> return "array_unshift($b,$a);"
+  of :+= return "$a += $b;"
+  then return "$a $name $b"
+
+fn add-tophp($a $b $type) str
+  case $type
+  of :int:int return "$a + $b"
+  then return "$a . $b"
+
+fn call-tophp($t:Lint $atom) str
+  my [$name $args] $atom
+  my $type $t.get-args-type($args)
+  my $arr $t.atoms-tophps($args)
+  my $s $arr.join(',')
+  if $name == :map return $arr.map-tophp
+  return $t.call-name-tophp($name $s $type)
+
+fn map-tophp($arr:strs) str
+  my [$array $fn] $arr
+  return "array_map('$fn',$array)"
+
+fn call-name-tophp($t:Lint $name $s $type) str
+  my $name-type "$name.$type"
+  my $ctype $t.get-name-type($name-type)
+  my $pname $name.name-tophp
+  case $name
+  of :len return $s.len-tophp($type)
+  of :tostr return $s.tostr-tophp($type)
+  of :first return $s.first-tophp($type)
+  of :rest return $s.rest-tophp($type)
+  of :has return $s.has-tophp($type)
+  of :shift return "array_shift($s);"
+  of :dec return "--$s;"
+  of :inc return "$s++;"
+  of :not return "!$s"
+  of :toint return "(int)$s"
+  of :join return "implode($s)"
+  of :readfile return "read_file($s)"
+  of :next return "second($s)"
+  of :chop return "pchop($s)"
+  of :lower return "strtolower($s)"
+  of :upper return "strtoupper($s)"
+  of :range return "rangestr($s)"
+  of :isdigit return "ctype_digit($s)"
+  of :isspace return "ctype_space($s)"
+  of :isalpha return "ctype_alpha($s)"
+  of :isupper return "ctype_upper($s)"
+  of :islower return "ctype_lower($s)"
+  of :isxdigit return "ctype_xdigit($s)"
+  of :isfile return "is_file($s)"
+  of :repeat return "str_repeat($s)"
+  then return $pname.pname-tophp($s $ctype)
+
+fn pname-tophp($pname $s $ctype) str
+  if $ctype == :nil return "$pname($s);"
+  return "$pname($s)"
+
+fn len-tophp($s $type) str
+  case $type
+  of :str return "strlen($s)"
+  then return "count($s)"
+
+fn tostr-tophp($s $type) str
+  case $type
+  of :int return "itos($s)"
+  of :char return $s
+  then return "tostr($s)"
+
+fn first-tophp($s $type) str
+  case $type
+  of :str return "first($s)"
+  then return "($s)[0]"
+
+fn rest-tophp($s $type) str
+  case $type
+  of :str return "rest($s)"
+  then return "restStrs($s)"
+
+fn has-tophp($s $type) str
+  case $type
+  of :str:char return "find($s)"
+  of :str:str return "find($s)"
+  then return "has($s)"
+
+// vim: ft=my

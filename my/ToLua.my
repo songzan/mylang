@@ -1,0 +1,379 @@
+ns ToLua
+
+use Core
+use Estr
+use LintMyAst
+
+fn ast-tolua($t:Lint $ast) str
+  my $arr $t.atoms-toluas($ast)
+  return $arr.join('\n')
+
+fn atoms-toluas($t:Lint $atoms) strs
+  my $arr strs
+  for $atom $atoms.atoms {
+    my $s $t.atom-tolua($atom)
+    if $s != str $arr << $s
+  }
+  return $arr
+
+fn atoms-tolua($t:Lint $atoms) str
+  my $arr $t.atoms-toluas($atoms)
+  return $t.atom-strs-tolua($arr)
+
+fn atom-strs-tolua($t:Lint $arr:strs) str
+  my $idt $t.get-indent
+  my $sep '\n' + $idt
+  return $arr.join($sep)
+
+fn block-tolua($t:Lint $expr) str
+  $t.indent.inc
+  my $s $t.atom-tolua($expr)
+  my $idt $t.get-indent
+  $t.indent.dec
+  return $idt + $s
+
+fn call-args-tolua($t:Lint $args) str
+  my $arr $t.atoms-toluas($args)
+  return $arr.join(',')
+
+fn atom-tolua($t:Lint $atom) str
+  my [$name $args] $atom
+  case $name
+  of :ns return $t.ns-tolua($args)
+  of :block return $t.atoms-tolua($args)
+  of :fnblock return $t.atoms-tolua($args)
+  of :fn return $t.fn-tolua($args)
+  of :for return $t.for-tolua($args)
+  of :case return $t.case-tolua($args)
+  of :ifelse return $t.ifelse-tolua($args)
+  of :if return $t.if-tolua($args)
+  of :while return $t.while-tolua($args)
+  of :my return $t.my-tolua($args)
+  of :mys return $t.mys-tolua($args)
+  of :set return $t.set-tolua($args)
+  of :say return $t.say-tolua($args)
+  of :print return $t.print-tolua($args)
+  of :error return $t.error-tolua($args)
+  of :return return $t.return-tolua($args)
+  of :estr return $t.estr-tolua($args)
+  of :str return $t.str-tolua($args)
+  of :ncall return $args.ncall-tolua
+  of :ocall return $t.ocall-tolua($args)
+  of :index return $t.index-tolua($args)
+  of :pcall return $t.pcall-tolua($args)
+  of :call return $t.call-tolua($args)
+  of :sym return $args.name-tolua
+  of :var return $args.name-tolua
+  of :dstr return $args.dstr-tolua
+  of :const return $t.const-tolua($args)
+  of :init return $args.init-tolua
+  of :lstr return "[=[$args]=]"
+  of :kstr return "'$args'"
+  of :int return $args
+  of :nil return $args
+  of :bool return $args
+  of :char return $args
+  of :use return str
+  then say "atom to lua miss $name"
+  return str
+
+fn const-tolua($t:Lint $name) str
+  if $t.is-struct($name) return "{}"
+  return $name
+
+fn ns-tolua($t:Lint $ns) str
+  $t.in-ns($ns) return str
+
+fn fn-tolua($t:Lint $ast) str
+  my [$head $atoms] $ast
+  my [$args $block] $atoms
+  my $name-type $head.name
+  my $name $name-type.name.name-tolua
+  $t.in-ns($name-type)
+  my $args-str $args.fn-args-tolua
+  my $block-str $t.block-tolua($block)
+  $t.out-ns
+  if $name == :main
+    return "do\n$block-str\nend"
+  my $func "\nfunction $name($args-str)"
+  return "$func\n$block-str\nend"
+
+fn fn-args-tolua($args) str
+  if $args == :nil return str
+  my $names $args.atoms.map(name)
+  return $names.map(name-tolua).join(',')
+
+fn for-tolua($t:Lint $args) str
+  my [$it-atom $expr] $args
+  my $it $t.iter-tolua($it-atom)
+  $t.in-block
+  my $block $t.block-tolua($expr)
+  $t.out-block
+  my $end $t.get-end
+  return "for $it do\n$block\n$end"
+
+fn iter-tolua($t:Lint $atom) str
+  my [$it-name $iter-atom] $atom
+  my $type $t.get-atom-type($iter-atom)
+  my $it $it-name.name-tolua
+  my $iter $t.atom-tolua($iter-atom)
+  case $type
+  of :strs return "_,$it in ipairs($iter)"
+  of :table return "$it,_ in pairs($iter)"
+  then return "_,$it in ipairs(chars($iter))"
+
+fn case-tolua($t:Lint $args) str
+  my [$case-atom $block] $args
+  my $case $t.atom-tolua($case-atom)
+  my $if :if
+  my $arr strs
+  for $expr $block.value.atoms {
+    my [$name $value] $expr
+    if $name == :of {
+      $arr << $t.of-tolua($value $if $case)
+      set $if :elseif
+    }
+    else $arr << $t.else-tolua($value)
+  }
+  $arr << :end
+  return $t.atom-strs-tolua($arr)
+
+fn of-tolua($t:Lint $args $if $case) str
+  my [$cond $block] $args
+  my $cond-str $t.cond-tolua($cond $case)
+  my $s $t.block-tolua($block)
+  return "$if $cond-str then\n$s"
+
+fn cond-tolua($t:Lint $atom $case) str
+  my [$name $value] $atom
+  if $name == :cond {
+    my $vstr $t.call-args-tolua($value)
+    return "isin($case,{$vstr})"
+  }
+  my $s $t.atom-tolua($atom)
+  return "$case == $s"
+
+fn ifelse-tolua($t:Lint $block) str
+  my $arr strs
+  for $expr $block.atoms
+    $arr << $t.if-expr-tolua($expr)
+  $arr << :end
+  return $t.atom-strs-tolua($arr)
+
+fn if-expr-tolua($t:Lint $expr) str
+  my [$name $value] $expr
+  if $name == :if
+    return $t.iif-tolua($value)
+  return $t.else-tolua($value)
+
+fn iif-tolua($t:Lint $args) str
+  my $cblock $t.cond-block-tolua($args)
+  my [$cond $block] $cblock
+  return "if $cond then\n$block"
+
+fn cond-block-tolua($t:Lint $args) str
+  my [$cond-atom $block-atom] $args
+  my $cond $t.atom-tolua($cond-atom)
+  my $block $t.block-tolua($block-atom)
+  return [$cond $block]
+
+fn else-tolua($t:Lint $expr) str
+  my $block $t.block-tolua($expr)
+  return "else\n$block"
+
+fn if-tolua($t:Lint $args) str
+  my $cblock $t.cond-block-tolua($args)
+  my [$cond $block] $cblock
+  my $end $t.get-end
+  return "if $cond then\n$block\n$end"
+
+fn while-tolua($t:Lint $args) str
+  my $cblock $t.cond-block-tolua($args)
+  my [$cond $block] $cblock
+  my $end $t.get-end
+  return "while $cond do\n$block\n$end"
+
+fn my-tolua($t:Lint $args) str
+  my [$var $value] $args
+  my $name $var.name-tolua
+  my $value-str $t.atom-tolua($value)
+  return "local $name = $value-str"
+
+fn mys-tolua($t:Lint $args) str
+  my [$vars $value] $args
+  my $names $vars.names.map(name-tolua)
+  my $nstr $names.join(',')
+  my $type $t.get-atom-type($value)
+  my $vstr $t.atom-tolua($value)
+  if $type == :strs
+    return "local $nstr = flat($vstr)"
+  return "local $nstr = flat(atoms($vstr))"
+
+fn set-tolua($t:Lint $args) str
+  my $arr $t.atoms-toluas($args)
+  my [$var $value] $arr
+  return "$var = $value"
+
+fn say-tolua($t:Lint $args) str
+  my $s $t.atom-tolua($args)
+  return "print($s)"
+
+fn print-tolua($t:Lint $args) str
+  my $s $t.atom-tolua($args)
+  return "io.write($s)"
+
+fn error-tolua($t:Lint $args) str
+  my $s $t.atom-tolua($args)
+  return "error($s)"
+
+fn return-tolua($t:Lint $atom) str
+  my $s $t.atom-tolua($atom)
+  return "return $s"
+
+fn estr-tolua($t:Lint $args) str
+  my $type $t.get-args-type($args)
+  my $s $t.call-args-tolua($args)
+  case $type
+  of :strs return "estr($s)"
+  then return "estr({$s})"
+
+fn ocall-tolua($t:Lint $args) str
+  my [$name $value] $args
+  my $type $t.get-atom-type($value)
+  my $s $t.atom-tolua($value)
+  if $t.is-field($type $name)
+    return "$s.$name"
+  return $name.call-value-tolua($s $type)
+
+fn ncall-tolua($call) str
+  my $name $call.name.name-tolua
+  return "$name()"
+
+fn pcall-tolua($t:Lint $atom) str
+  my [$name $args] $atom
+  my $type $t.get-args-type($args)
+  my [$a $b] $t.atoms-toluas($args)
+  case $name
+  of :+  return $a.add-tolua($b $type)
+  of :>> return "insert($b,1,$a)"
+  of :<< return "insert($a,$b)"
+  of :!= return "$a ~= $b"
+  of :+= return "$a = $a + $b"
+  then return "$a $name $b"
+
+fn add-tolua($a $b $type) str
+  case $type
+  of :int:int return "$a + $b"
+  then return "$a .. $b"
+
+fn index-tolua($t:Lint $args) str
+  my [$data $at] $t.atoms-toluas($args)
+  my $type $t.get-args-type($args)
+  case $type
+  of :str:int return "charat($data,$at)"
+  of :strs:int return "arrayat($data,$at)"
+  then return "$data[$at]"
+
+fn call-tolua($t:Lint $atom) str
+  my [$name $args] $atom
+  my $type $t.get-args-type($args)
+  my $arr $t.atoms-toluas($args)
+  my $s $arr.join(',')
+  return $name.call-value-tolua($s $type)
+
+fn call-value-tolua($call $s $type) str
+  my $name $call.name-tolua
+  case $name
+  of :tostr return $s.tostr-tolua($type)
+  of :first return $s.first-tolua($type)
+  of :second return $s.second-tolua($type)
+  of :rest return $s.rest-tolua($type)
+  of :has return $s.has-tolua($type)
+  of :repeat return "rep($s)"
+  of :len return "#$s"
+  of :dec return "$s = $s - 1"
+  of :inc return "$s = $s + 1"
+  of :not return "not $s"
+  of :tochars return "chars($s)"
+  then return "$name($s)"
+
+fn tostr-tolua($s $type) str
+  case $type
+  of :int return "itos($s)"
+  of :char return $s
+  then return "tostr($s)"
+
+fn first-tolua($s $type) str
+  case $type
+  of :str return "first($s)"
+  then return "$s[1]"
+
+fn second-tolua($s $type) str
+  case $type
+  of :str return "second($s)"
+  then return "$s[2]"
+
+fn rest-tolua($s $type) str
+  case $type
+  of :str return "rest($s)"
+  then return "restStrs($s)"
+
+fn has-tolua($s $type) str
+  case $type
+  of :str:char return "include($s)"
+  of :str:str return "include($s)"
+  then return "has($s)"
+
+fn init-tolua($name) str
+  case $name
+  of :int return :1
+  of :str return "''"
+  then return "{}"
+
+fn name-tolua($name) str
+  my $buf buffer
+  for $a $name
+    case $a
+    of '-' $buf << '_'
+    of '$' $buf << 's'
+    then $buf << $a
+  return $buf.tostr
+
+fn str-tolua($t:Lint $args) str
+  my $buf buffer
+  my $names strs
+  for $atom $args.atoms {
+    my [$name $value] $atom
+    if $name == :dstr {
+      $buf << $value.dchars-tolua
+    } else {
+      $buf << :%s
+      $names << $value.name-tolua
+    }
+  }
+  my $f $buf.tostr
+  my $s $names.join(',')
+  return "format(\"$f\",$s)"
+
+fn dstr-tolua($dstr) str
+  my $s $dstr.dchars-tolua
+  return "\"$s\""
+
+fn dchars-tolua($s) str
+  my $buf buffer
+  my $mode 0
+  for $a $s
+    case $mode
+    of 1
+      set $mode 0
+      case $a
+      of '$' $buf << $a
+      of '-' $buf << $a
+      of '%' $buf << :%%
+      then $buf << '\\' + $a
+    then
+      if $a == '\\' set $mode 1
+      else $buf << $a
+  return $buf.tostr
+
+// vim: ft=my

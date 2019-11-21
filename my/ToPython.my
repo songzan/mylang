@@ -1,0 +1,347 @@
+ns ToPython
+
+use Core
+use Estr
+use LintMyAst
+
+fn ast-topy($t:Lint $ast) str
+  my $arr $t.atoms-topys($ast)
+  return $arr.join('\n')
+
+fn atoms-topys($t:Lint $atoms) strs
+  my $arr strs
+  for $atom $atoms.atoms {
+    my $s $t.atom-topy($atom)
+    if $s != str $arr << $s
+  }
+  return $arr
+
+fn atoms-topy($t:Lint $atoms) str
+  my $arr $t.atoms-topys($atoms)
+  return $t.atom-strs-topy($arr)
+
+fn atom-strs-topy($t:Lint $arr:strs) str
+  my $idt $t.get-indent
+  my $sep '\n' + $idt
+  return $arr.join($sep)
+
+fn block-topy($t:Lint $expr) str
+  $t.indent.inc
+  my $s $t.atom-topy($expr)
+  my $idt $t.get-indent
+  $t.indent.dec
+  return "\n$idt$s"
+
+fn call-args-topy($t:Lint $args) str
+  my $arr $t.atoms-topys($args)
+  return $arr.join(',')
+
+fn atom-topy($t:Lint $atom) str
+  my [$name $args] $atom
+  case $name
+  of :ns return $t.ns-topy($args)
+  of :fn return $t.fn-topy($args)
+  of :for return $t.for-topy($args)
+  of :case return $t.case-topy($args)
+  of :if return $t.if-topy($args)
+  of :else return $t.else-topy($args)
+  of :while return $t.while-topy($args)
+  of :ifelse return $t.atoms-topy($args)
+  of :block return $t.atoms-topy($args)
+  of :my return $t.my-topy($args)
+  of :mys return $t.mys-topy($args)
+  of :return return $t.return-topy($args)
+  of :say return $t.say-topy($args)
+  of :print return $t.print-topy($args)
+  of :error return $t.error-topy($args)
+  of :estr return $t.estr-topy($args)
+  of :ncall return $args.ncall-topy
+  of :ocall return $t.ocall-topy($args)
+  of :pcall return $t.pcall-topy($args)
+  of :call return $t.call-topy($args)
+  of :const return $t.const-topy($args)
+  of :set return $t.set-topy($args)
+  of :index return $t.index-topy($args)
+  of :sym return $args.name-topy
+  of :var return $args.name-topy
+  of :init return $args.init-topy
+  of :str return $args.str-topy
+  of :dstr return $args.dstr-topy
+  of :lstr return "'''$args'''"
+  of :kstr return "'$args'"
+  of :int return $args
+  of :char return $args
+  of :bool return $args.bool-topy
+  of :nil return :None
+  of :use return str
+  then say "atom to python miss $name"
+  return str
+
+fn bool-topy($name) str
+  if $name == :true return :True
+  return :False
+
+fn ns-topy($t:Lint $ns) str
+  $t.in-ns($ns) return str
+
+fn fn-topy($t:Lint $ast) str
+  my [$head $atoms] $ast
+  my [$args $exprs] $atoms
+  my $name-type $head.name
+  $t.in-ns($name-type)
+  my $name $name-type.name.name-topy
+  my $args-str $args.fn-args-topy
+  my $exprs-str $t.block-topy($exprs)
+  $t.out-ns
+  my $fnhead "if __name__== '__main__':"
+  if $name == :main
+    return "\n$fnhead$exprs-str"
+  my $declare "\ndef $name($args-str)"
+  return "$declare:$exprs-str"
+
+fn fn-args-topy($args) str
+  if $args == :nil return str
+  my $arr $args.atoms.map(name)
+  return $arr.map(name-topy).join(',')
+
+fn for-topy($t:Lint $args) str
+  my [$iter-expr $exprs] $args
+  my $iter-str $t.iter-topy($iter-expr)
+  $t.in-block
+  my $exprs-str $t.block-topy($exprs)
+  $t.out-block
+  return "for $iter-str:$exprs-str"
+
+fn iter-topy($t:Lint $atom) str
+  my [$name $set-atom] $atom
+  my $type $t.get-atom-type($set-atom)
+  my $iter $name.name-topy
+  my $set $t.atom-topy($set-atom)
+  case $type
+  of :str return "$iter in $set"
+  of :strs return "$iter in $set"
+  then return "$iter in $set.keys()"
+
+fn case-topy($t:Lint $args) str
+  my [$case-atom $exprs] $args
+  my $case $t.atom-topy($case-atom)
+  my $if :if
+  my $arr strs
+  my $n 0
+  for $expr $exprs.value.atoms {
+    if $n > 0 set $if :elif
+    $n.inc
+    my [$name $value] $expr
+    if $name == :of
+      $arr << $t.of-topy($value $if $case)
+    else $arr << $t.else-topy($value)
+  }
+  return $t.atom-strs-topy($arr)
+
+fn of-topy($t:Lint $args $if $case) str
+  my [$cond $exprs] $args
+  my $cs $t.atom-topy($cond)
+  my $s $t.block-topy($exprs)
+  return "$if $case == $cs: $s"
+
+fn if-topy($t:Lint $exprs) str
+  my $s $t.cond-block-topy($exprs)
+  return "if $s"
+
+fn cond-block-topy($t:Lint $args) str
+  my [$cond $exprs] $args
+  my $cond-str $t.atom-topy($cond)
+  my $exprs-str $t.block-topy($exprs)
+  return "$cond-str: $exprs-str"
+
+fn else-topy($t:Lint $exprs) str
+  my $s $t.block-topy($exprs)
+  return "else: $s"
+
+fn while-topy($t:Lint $exprs) str
+  my $s $t.cond-block-topy($exprs)
+  return "while $s"
+
+fn return-topy($t:Lint $atom) str
+  my $s $t.atom-topy($atom)
+  return "return $s"
+
+fn say-topy($t:Lint $atom) str
+  my $s $t.atom-topy($atom)
+  return "say($s)"
+
+fn print-topy($t:Lint $atom) str
+  my $s $t.atom-topy($atom)
+  return "aprint($s)"
+
+fn error-topy($t:Lint $atom) str
+  my $s $t.atom-topy($atom)
+  return "error($s)"
+
+fn estr-topy($t:Lint $args) str
+  my $type $t.get-args-type($args)
+  my $s $t.call-args-topy($args)
+  case $type
+  of :strs return "estr($s)"
+  then return "estr([$s])"
+
+fn my-topy($t:Lint $args) str
+  my [$name $value] $args
+  my $nstr $name.name-topy
+  my $vstr $t.atom-topy($value)
+  return "$nstr = $vstr"
+
+fn mys-topy($t:Lint $args) str
+  my [$vars $value] $args
+  my $names $vars.names
+  my $len $names.len.tostr
+  my $nstr $names.map(name-topy).join(',')
+  my $vstr $t.atom-topy($value)
+  my $type $t.get-atom-type($value)
+  if $type == :strs
+    return "$nstr = get$len($vstr)"
+  return "$nstr = get$len(atoms($vstr))"
+
+fn set-topy($t:Lint $args) str
+  my $arr $t.atoms-topys($args)
+  my [$var $value] $arr
+  return "$var = $value"
+
+fn name-topy($name) str
+  my $buf buffer
+  for $a $name
+    case $a
+    of '-' $buf << '_'
+    of '$' $buf << '_'
+    then $buf << $a
+  return $buf.tostr
+
+fn dstr-topy($dstr) str
+  my $s $dstr.dchars-topy
+  return "\"$s\""
+
+fn str-topy($args) str
+  my $buf buffer
+  my $vars strs
+  for $arg $args.atoms {
+    my [$type $value] $arg
+    if $type == :dstr
+      $buf << $value.dchars-topy
+    else {
+      $buf << :%s
+      $vars << $value.name-topy
+    }
+  }
+  my $s $buf.tostr
+  my $vars-str $vars.join(',')
+  return "\"$s\" \% ($vars-str)"
+
+fn dchars-topy($s) str
+  my $buf buffer
+  my $mode 0
+  for $a $s
+    case $mode
+    of 1
+      set $mode 0
+      case $a
+      of '$' $buf << $a
+      of '-' $buf << $a
+      of '%' $buf << :%%
+      then $buf << '\\' + $a
+   then
+      case $a
+      of '\\' set $mode 1
+      then $buf << $a
+  return $buf.tostr
+
+fn const-topy($t:Lint $name) str
+  if $t.is-struct($name) return "{}"
+  return $name
+
+fn init-topy($name) str
+  case $name
+  of :int return :0
+  of :str return "''"
+  of :strs return "[]"
+  of :buffer return "[]"
+  of :table return "{}"
+  of :tree return "{}"
+  then return "{}"
+
+fn ncall-topy($call) str
+  my $name $call.name.name-topy
+  return "$name()"
+
+fn ocall-topy($t:Lint $args) str
+  my [$call $value] $args
+  my $type $t.get-atom-type($value)
+  my $s $t.atom-topy($value)
+  my $name $call.name-topy
+  if $t.is-field($type $call) {
+    return "$s['$name']"
+  }
+  return $name.call-name-topy($s $type)
+
+fn index-topy($t:Lint $args) str
+  my [$data $at] $t.atoms-topys($args)
+  return "$data[$at]"
+
+fn pcall-topy($t:Lint $atom) str
+  my [$name $args] $atom
+  my [$a $b] $t.atoms-topys($args)
+  case $name
+  of :<< return "$a.append($b)"
+  of :>> return "$b.insert(0,$a)"
+  then return "$a $name $b"
+
+fn call-topy($t:Lint $atom) str
+  my [$call $args] $atom
+  my $arr $t.atoms-topys($args)
+  my $s $arr.join(',')
+  my $type $t.get-args-type($args)
+  my $name $call.name-topy
+  case $call
+  of :map return $arr.map-topy
+  of :join return $arr.join-topy
+  of :split return $arr.split-topy
+  then return $name.call-name-topy($s $type)
+
+fn map-topy($arr:strs) str
+  my [$list $fn] $arr
+  return "list(map($fn,$list))"
+
+fn join-topy($arr:strs) str
+  my [$list $sep] $arr
+  return "$sep.join($list)"
+
+fn split-topy($arr:strs) str
+  my [$s $sep] $arr
+  return "$s.split($sep)"
+
+fn call-name-topy($name $s $type) str
+  case $name
+  of :tostr return $s.tostr-topy($type)
+  of :dec return "$s -= 1"
+  of :inc return "$s += 1"
+  of :not return "not $s"
+  of :tochars return "list($s)"
+  of :next return "second($s)"
+  of :shift return "$s.pop(0)"
+  of :copy return "shutil.copy($s)"
+  of :isfile return "os.path.isfile($s)"
+  of :filter return "grep($s)"
+  of :rename return "os.rename($s)"
+  of :isdigit return "$s.isdigit()"
+  of :isalpha return "$s.isalpha()"
+  of :isspace return "$s.isspace()"
+  of :isupper return "$s.isupper()"
+  of :islower return "$s.islower()"
+  then return "$name($s)"
+
+fn tostr-topy($s $type) str
+  case $type
+  of :char return $s
+  of :int return "itos($s)"
+  then return "string($s)"
+
+// vim: ft=my

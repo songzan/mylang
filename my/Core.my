@@ -1,0 +1,136 @@
+ns Core
+
+func !=  char:char bool
+func !=  int:int bool
+func !=  str:str bool
+func +   char:char str
+func +   char:str str
+func +   int:int int
+func +   str:char str
+func +   str:str str
+func +=  int:int nil
+func -   int:int int
+func <   char:char bool
+func <   int:int bool
+func <<  buffer:char nil
+func <<  buffer:str nil
+func <<  strs:str nil
+func <=  char:char bool
+func <=  int:int bool
+func ==  bool:bool bool
+func ==  char:char bool
+func ==  int:int bool
+func ==  str:str bool
+func >   char:char bool
+func >   int:int bool
+func >=  char:char bool
+func >=  int:int bool
+func >>  str:strs nil
+func chop  str str
+func copy  str:str nil
+func cut   str str
+func dec   int nil
+func endwith str:char bool
+func error   str nil
+func first   str char
+func first   strs str
+func getline str:int str
+func has     str:char bool
+func has     strs:str bool
+func has     table:str bool
+func has     tree:str bool
+func inc     int nil
+func index   chars:int char
+func index   table:str str
+func index   tree:str table
+func isalpha  char bool
+func isdigit  char bool
+func isfile   str bool
+func ishspace char bool
+func islower  char bool
+func isspace  char bool
+func isupper  char bool
+func isvspace char bool
+func iswords  char bool
+func isxdigit char bool
+func iter  chars char
+func iter  str char
+func iter  strs str
+func iter  table str
+func join  strs:char str
+func join  strs:str str
+func len   buffer int
+func len   chars int
+func len   str int
+func len   strs int
+func len   table int
+func lower str str
+func map   strs:fn strs
+func mkdir str nil
+func not   bool bool
+func now   nil str
+func osargs nil strs
+func print  str nil
+func readfile str str
+func readline nil str
+func rename   str:str nil
+func repeat   str:int str
+func rest     str str
+func restat   str:int str
+func say str nil
+func second  str char
+func second  strs str
+func set bool:bool nil
+func set buffer:buffer nil
+func set char:char nil
+func set chars:chars nil
+func set int:int nil
+func set str:str nil
+func set strs:strs nil
+func set table:table nil
+func set tree:tree nil
+func shift strs nil
+func split str:char strs
+func startwith str:char bool
+func tail  str char
+func tochars str chars
+func toend str str
+func toint str int
+func tostr buffer str
+func tostr char str
+func tostr chars str
+func tostr int str
+func tostr strs str
+func trim  str str
+func upper str str
+func writefile str:str nil
+
+struct Cursor [
+  str:str
+  at:int
+  len:int
+  output:strs
+  depth:int
+  input:chars
+  rtable:table
+]
+
+struct Lint [
+  at:str
+  ns:str
+  ret:str
+  stree:tree
+  stack:strs
+  counter:int
+  indent:int
+]
+
+define FOF char
+define EIN char
+define OUT char
+define QSTR char
+define FAIL str
+define PASS str
+
+
+// vim: ft=my

@@ -1,0 +1,1284 @@
+// grammar php
+
+htmlDocument
+ : Shebang? htmlElementOrPhpBlock* EOF
+ ;
+
+htmlElementOrPhpBlock
+ : htmlElements
+ | phpBlock
+ | scriptTextPart
+ ;
+
+htmlElements
+ : htmlElement+
+ ;
+
+htmlElement
+ : HtmlDtd
+ | HtmlScriptOpen
+ | HtmlClose
+ | HtmlStyleOpen
+ | HtmlOpen
+ | HtmlName
+ | HtmlSlashClose
+ | HtmlSlash
+ | HtmlText
+ | HtmlEquals
+ | HtmlStartQuoteString
+ | HtmlEndQuoteString
+ | HtmlStartDoubleQuoteString
+ | HtmlEndDoubleQuoteString
+ | HtmlHex
+ | HtmlDecimal
+ | HtmlQuoteString
+ | HtmlDoubleQuoteString
+ | StyleBody
+ | ScriptClose
+ | XmlStart XmlText* XmlClose
+ ;
+
+scriptTextPart
+ : ScriptText+
+ ;
+
+phpBlock
+ : importStatement* topStatement+
+ ;
+
+importStatement
+ : Import Namespace namespaceNameList ';'
+ ;
+
+topStatement
+ : statement
+ | useDeclaration
+ | namespaceDeclaration
+ | functionDeclaration
+ | classDeclaration
+ | globalConstantDeclaration
+ ;
+
+useDeclaration
+ : Use (Function | Const)? useDeclarationContentList ';'
+ ;
+
+useDeclarationContentList
+ : '\\'? useDeclarationContent (',' '\\'? useDeclarationContent)*
+ ;
+
+useDeclarationContent
+ : namespaceNameList (As identifier)?
+ ;
+
+namespaceDeclaration
+ : Namespace (namespaceNameList? OpenCurlyBracket namespaceStatement* '}' | namespaceNameList ';')
+ ;
+
+namespaceStatement
+ : statement
+ | useDeclaration
+ | functionDeclaration
+ | classDeclaration
+ | globalConstantDeclaration
+ ;
+
+functionDeclaration
+ : attributes Function '&'? identifier typeParameterListInBrackets? '(' formalParameterList ')' blockStatement
+ ;
+
+classDeclaration
+ : attributes :private? modifier? Partial? (
+ classEntryType identifier typeParameterListInBrackets? (Extends qualifiedStaticTypeRef)? (Implements interfaceList)?
+ | Interface identifier typeParameterListInBrackets? (Extends interfaceList)? )
+ OpenCurlyBracket classStatement* '}'
+ ;
+
+classEntryType
+ : Class
+ | Trait
+ ;
+
+interfaceList
+ : qualifiedStaticTypeRef (',' qualifiedStaticTypeRef)*
+ ;
+
+typeParameterListInBrackets
+ : '<:' typeParameterList ':>'
+ | '<:' typeParameterWithDefaultsList ':>'
+ | '<:' typeParameterList ',' typeParameterWithDefaultsList ':>'
+ ;
+
+typeParameterList
+ : typeParameterDecl (',' typeParameterDecl)*
+ ;
+
+typeParameterWithDefaultsList
+ : typeParameterWithDefaultDecl (',' typeParameterWithDefaultDecl)*
+ ;
+
+typeParameterDecl
+ : attributes identifier
+ ;
+
+typeParameterWithDefaultDecl
+ : attributes identifier Eq (qualifiedStaticTypeRef | primitiveType)
+ ;
+
+genericDynamicArgs
+ : '<:' typeRef (',' typeRef)* ':>'
+ ;
+
+attributes
+ : attributesGroup*
+ ;
+
+attributesGroup
+ : '[' (identifier ':')? attribute (',' attribute)* ']'
+ ;
+
+attribute
+ : qualifiedNamespaceName
+ | qualifiedNamespaceName '(' attributeArgList ')'
+ | qualifiedNamespaceName '(' attributeNamedArgList ')'
+ | qualifiedNamespaceName '(' attributeArgList ',' attributeNamedArgList ')'
+ ;
+
+attributeArgList
+ : expression (',' expression)*
+ ;
+
+attributeNamedArgList
+ : attributeNamedArg (',' attributeNamedArg)*
+ ;
+
+attributeNamedArg
+ : VarName '=>' expression
+ ;
+
+innerStatementList
+ : innerStatement*
+ ;
+
+innerStatement
+ : statement
+ | functionDeclaration
+ | classDeclaration
+ ;
+
+statement
+ : identifier ':'
+ | blockStatement
+ | ifStatement
+ | whileStatement
+ | doWhileStatement
+ | forStatement
+ | switchStatement
+ | breakStatement
+ | continueStatement
+ | returnStatement
+ | yieldExpression ';'
+ | globalStatement
+ | staticVariableStatement
+ | echoStatement
+ | expressionStatement
+ | unsetStatement
+ | foreachStatement
+ | tryCatchFinally
+ | throwStatement
+ | gotoStatement
+ | declareStatement
+ | emptyStatement
+ | inlineHtmlStatement
+ ;
+
+emptyStatement
+ : ';'
+ ;
+
+blockStatement
+ : OpenCurlyBracket innerStatementList '}'
+ ;
+
+ifStatement
+ : If parenthesis statement elseIfStatement* elseStatement?
+ | If parenthesis ':' innerStatementList elseIfColonStatement* elseColonStatement? EndIf ';'
+ ;
+
+elseIfStatement
+ : ElseIf parenthesis statement
+ ;
+
+elseIfColonStatement
+ : ElseIf parenthesis ':' innerStatementList
+ ;
+
+elseStatement
+ : Else statement
+ ;
+
+elseColonStatement
+ : Else ':' innerStatementList
+ ;
+
+whileStatement
+ : While parenthesis (statement | ':' innerStatementList EndWhile ';')
+ ;
+
+doWhileStatement
+ : Do statement While parenthesis ';'
+ ;
+
+forStatement
+ : For '(' forInit? ';' expressionList? ';' forUpdate? ')' (statement | ':' innerStatementList EndFor ';' )
+ ;
+
+forInit
+ : expressionList
+ ;
+
+forUpdate
+ : expressionList
+ ;
+
+switchStatement
+ : Switch parenthesis (OpenCurlyBracket ';'? switchBlock* '}' | ':' ';'? switchBlock* EndSwitch ';')
+ ;
+
+switchBlock
+ : ((Case expression | Default) (':' | ';'))+ innerStatementList
+ ;
+
+breakStatement
+ : Break expression? ';'
+ ;
+
+continueStatement
+ : Continue expression? ';'
+ ;
+
+returnStatement
+ : Return expression? ';'
+ ;
+
+expressionStatement
+ : expression ';'
+ ;
+
+unsetStatement
+ : Unset '(' chainList ')' ';'
+ ;
+
+foreachStatement
+ : Foreach
+ ( '(' chain As '&'? chain ('=>' '&'? chain)? ')'
+ | '(' expression As chain ('=>' '&'? chain)? ')'
+ | '(' chain As List '(' assignmentList ')' ')' )
+ (statement | ':' innerStatementList EndForeach ';')
+ ;
+
+tryCatchFinally
+ : Try blockStatement (catchClause+ finallyStatement? | catchClause* finallyStatement)
+ ;
+
+catchClause
+ : Catch '(' qualifiedStaticTypeRef VarName ')' blockStatement
+ ;
+
+finallyStatement
+ : Finally blockStatement
+ ;
+
+throwStatement
+ : Throw expression ';'
+ ;
+
+gotoStatement
+ : Goto identifier ';'
+ ;
+
+declareStatement
+ : Declare '(' declareList ')' (statement | ':' innerStatementList EndDeclare ';')
+ ;
+
+inlineHtmlStatement
+ : inlineHtml+
+ ;
+
+inlineHtml
+ : htmlElements
+ | scriptTextPart
+ ;
+
+declareList
+ : identifierInititalizer (',' identifierInititalizer)*
+ ;
+
+formalParameterList
+ : formalParameter? (',' formalParameter)*
+ ;
+
+formalParameter
+ : attributes typeHint? '&'? '...'? variableInitializer
+ ;
+
+typeHint
+ : qualifiedStaticTypeRef
+ | Callable
+ | primitiveType
+ ;
+
+globalStatement
+ : Global globalVar (',' globalVar)* ';'
+ ;
+
+globalVar
+ : VarName
+ | Dollar chain
+ | Dollar OpenCurlyBracket expression '}'
+ ;
+
+echoStatement
+ : Echo expressionList ';'
+ ;
+
+staticVariableStatement
+ : Static variableInitializer (',' variableInitializer)* ';'
+ ;
+
+classStatement
+ : attributes propertyModifiers variableInitializer (',' variableInitializer)* ';'
+ | attributes Const identifierInititalizer (',' identifierInititalizer)* ';'
+ | attributes memberModifiers? Function '&'? identifier
+ typeParameterListInBrackets? '(' formalParameterList ')' baseCtorCall? methodBody
+ | Use qualifiedNamespaceNameList traitAdaptations
+ ;
+
+traitAdaptations
+ : ';'
+ | OpenCurlyBracket traitAdaptationStatement* '}'
+ ;
+
+traitAdaptationStatement
+ : traitPrecedence
+ | traitAlias
+ ;
+
+traitPrecedence
+ : qualifiedNamespaceName '::' identifier InsteadOf qualifiedNamespaceNameList ';'
+ ;
+
+traitAlias
+ : traitMethodReference As (memberModifier | memberModifier? identifier) ';'
+ ;
+
+traitMethodReference
+ : (qualifiedNamespaceName '::')? identifier
+ ;
+
+baseCtorCall
+ : ':' identifier arguments
+ ;
+
+methodBody
+ : ';'
+ | blockStatement
+ ;
+
+propertyModifiers
+ : memberModifiers
+ | Var
+ ;
+
+memberModifiers
+ : memberModifier+
+ ;
+
+variableInitializer
+ : VarName (Eq constantInititalizer)?
+ ;
+
+identifierInititalizer
+ : identifier Eq constantInititalizer
+ ;
+
+globalConstantDeclaration
+ : attributes Const identifierInititalizer (',' identifierInititalizer)* ';'
+ ;
+
+expressionList
+ : expression (',' expression)*
+ ;
+
+parenthesis
+ : '(' (expression | yieldExpression) ')'
+ ;
+
+expression
+ : Clone expressionCloneExpression
+ | newExprNewExpression
+ | stringConstant '[' expression ']'IndexerExpression
+ | '(' castOperation ')' expressionCastExpression
+ | ('~' | '@') expressionUnaryOperatorExpression
+ | ('!' | '+' | '-') expressionUnaryOperatorExpression
+ | ('++' | '--') chainPrefixIncDecExpression
+ | chain ('++' | '--')PostfixIncDecExpression
+ | Print expressionPrintExpression
+ | chainChainExpression
+ | constantScalarExpression
+ | stringScalarExpression
+ | LabelScalarExpression
+ | BackQuoteStringBackQuoteStringExpression
+ | parenthesisParenthesisExpression
+ | (Array '(' arrayItemList? ')' | '[' arrayItemList? ']') ('[' expression ']')?ArrayCreationExpression
+ | YieldSpecialWordExpression
+ | List '(' assignmentList ')' Eq expressionSpecialWordExpression
+ | IsSet '(' chainList ')'SpecialWordExpression
+ | Empty '(' chain ')'SpecialWordExpression
+ | Eval '(' expression ')'SpecialWordExpression
+ | Exit ( '(' ')' | parenthesis )?SpecialWordExpression
+ | (Include | IncludeOnce) expressionSpecialWordExpression
+ | (Require | RequireOnce) expressionSpecialWordExpression
+ | Static? Function '&'? '(' formalParameterList ')' lambdaFunctionUseVars? blockStatementLambdaFunctionExpression
+ | <assoc=right> expression op='**' expressionArithmeticExpression
+ | expression InstanceOf typeRefInstanceOfExpression
+ | expression op=('*' | Divide | '%') expressionArithmeticExpression
+ | expression op=('+' | '-' | '.') expressionArithmeticExpression
+ | expression op=('<<' | '>>') expressionComparisonExpression
+ | expression op=(Less | '<=' | Greater | '>=') expressionComparisonExpression
+ | expression op=('===' | '!==' | '==' | IsNotEq) expressionComparisonExpression
+ | expression op='&' expressionBitwiseExpression
+ | expression op='^' expressionBitwiseExpression
+ | expression op='|' expressionBitwiseExpression
+ | expression op='&&' expressionBitwiseExpression
+ | expression op='||' expressionBitwiseExpression
+ | expression op=QuestionMark expression? ':' expressionConditionalExpression
+ | chain assignmentOperator expressionAssignmentExpression
+ | chain Eq '&' (chain | newExpr)AssignmentExpression
+ | expression op=LogicalAnd expressionLogicalExpression
+ | expression op=LogicalXor expressionLogicalExpression
+ | expression op=LogicalOr expressionLogicalExpression
+ ;
+
+newExpr
+ : New typeRef arguments?
+ ;
+
+assignmentOperator
+ : Eq
+ | '+='
+ | '-='
+ | '*='
+ | '**='
+ | '/='
+ | '.='
+ | '%='
+ | '&='
+ | '|='
+ | '^='
+ | '<<='
+ | '>>='
+ ;
+
+yieldExpression
+ : Yield expression ('=>' expression)?
+ ;
+
+arrayItemList
+ : arrayItem (',' arrayItem)* ','?
+ ;
+
+arrayItem
+ : expression ('=>' expression)?
+ | (expression '=>')? '&' chain
+ ;
+
+lambdaFunctionUseVars
+ : Use '(' lambdaFunctionUseVar (',' lambdaFunctionUseVar)* ')'
+ ;
+
+lambdaFunctionUseVar
+ : '&'? VarName
+ ;
+
+qualifiedStaticTypeRef
+ : qualifiedNamespaceName genericDynamicArgs?
+ | Static
+ ;
+
+typeRef
+ : (qualifiedNamespaceName | indirectTypeRef) genericDynamicArgs?
+ | primitiveType
+ | Static
+ ;
+
+indirectTypeRef
+ : chainBase ('->' keyedFieldName)*
+ ;
+
+qualifiedNamespaceName
+ : Namespace? '\\'? namespaceNameList
+ ;
+
+namespaceNameList
+ : identifier ('\\' identifier)*
+ ;
+
+qualifiedNamespaceNameList
+ : qualifiedNamespaceName (',' qualifiedNamespaceName)*
+ ;
+
+arguments
+ : '(' ( actualArgument (',' actualArgument)* | yieldExpression)? ')'
+ ;
+
+actualArgument
+ : '...'? expression
+ | '&' chain
+ ;
+
+constantInititalizer
+ : constant
+ | string
+ | Array '(' (constantArrayItemList ','?)? ')'
+ | '[' (constantArrayItemList ','?)? ']'
+ | ('+'|'-') constantInititalizer
+ ;
+
+constantArrayItemList
+ : constantArrayItem (',' constantArrayItem)*
+ ;
+
+constantArrayItem
+ : constantInititalizer ('=>' constantInititalizer)?
+ ;
+
+constant
+ : Null
+ | literalConstant
+ | magicConstant
+ | classConstant
+ | qualifiedNamespaceName
+ ;
+
+literalConstant
+ : Real
+ | BooleanConstant
+ | numericConstant
+ | stringConstant
+ ;
+
+numericConstant
+ : Octal
+ | Decimal
+ | Hex
+ | Binary
+ ;
+
+classConstant
+ : (Class | Parent_) '::' (identifier | Constructor | Get | Set)
+ | (qualifiedStaticTypeRef | keyedVariable) '::' identifier
+ ;
+
+stringConstant
+ : Label
+ ;
+
+string
+ : StartHereDoc HereDocText+
+ | StartNowDoc HereDocText+
+ | SingleQuoteString
+ | DoubleQuote interpolatedStringPart* DoubleQuote
+ ;
+
+interpolatedStringPart
+ : StringPart
+ | chain
+ ;
+
+chainList
+ : chain (',' chain)*
+ ;
+
+chain
+ : (chainBase | functionCall | '(' newExpr ')') memberAccess*
+ ;
+
+memberAccess
+ : '->' keyedFieldName actualArguments?
+ ;
+
+functionCall
+ : functionCallName actualArguments
+ ;
+
+functionCallName
+ : qualifiedNamespaceName
+ | classConstant
+ | chainBase
+ ;
+
+actualArguments
+ : genericDynamicArgs? arguments squareCurlyExpression*
+ ;
+
+chainBase
+ : keyedVariable ('::' keyedVariable)?
+ | qualifiedStaticTypeRef '::' keyedVariable
+ ;
+
+keyedFieldName
+ : keyedSimpleFieldName
+ | keyedVariable
+ ;
+
+keyedSimpleFieldName
+ : (identifier | OpenCurlyBracket expression '}') squareCurlyExpression*
+ ;
+
+keyedVariable
+ : Dollar* (VarName | Dollar OpenCurlyBracket expression '}') squareCurlyExpression*
+ ;
+
+squareCurlyExpression
+ : '[' expression? ']'
+ | OpenCurlyBracket expression '}'
+ ;
+
+assignmentList
+ : assignmentListElement? (',' assignmentListElement?)*
+ ;
+
+assignmentListElement
+ : chain
+ | List '(' assignmentList ')'
+ ;
+
+modifier
+ : Abstract
+ | Final
+ ;
+
+identifier
+ : Label
+ | Abstract
+ | Array
+ | As
+ | BinaryCast
+ | BoolType
+ | BooleanConstant
+ | Break
+ | Callable
+ | Case
+ | Catch
+ | Class
+ | Clone
+ | Const
+ | Continue
+ | Declare
+ | Default
+ | Do
+ | DoubleCast
+ | DoubleType
+ | Echo
+ | Else
+ | ElseIf
+ | Empty
+ | EndDeclare
+ | EndFor
+ | EndForeach
+ | EndIf
+ | EndSwitch
+ | EndWhile
+ | Eval
+ | Exit
+ | Extends
+ | Final
+ | Finally
+ | FloatCast
+ | For
+ | Foreach
+ | Function
+ | Global
+ | Goto
+ | If
+ | Implements
+ | Import
+ | Include
+ | IncludeOnce
+ | InstanceOf
+ | InsteadOf
+ | Int16Cast
+ | Int64Type
+ | Int8Cast
+ | Interface
+ | IntType
+ | IsSet
+ | List
+ | LogicalAnd
+ | LogicalOr
+ | LogicalXor
+ | Namespace
+ | New
+ | Null
+ | ObjectType
+ | Parent_
+ | Partial
+ | Print
+ | :private
+ | Protected
+ | Public
+ | Require
+ | RequireOnce
+ | Resource
+ | Return
+ | Static
+ | StringType
+ | Switch
+ | Throw
+ | Trait
+ | Try
+ | Typeof
+ | UintCast
+ | UnicodeCast
+ | Unset
+ | Use
+ | Var
+ | While
+ | Yield
+ | Get
+ | Set
+ | Call
+ | CallStatic
+ | Constructor
+ | Destruct
+ | Wakeup
+ | Sleep
+ | Autoload
+ | IsSet__
+ | Unset__
+ | ToString__
+ | Invoke
+ | SetState
+ | Clone__
+ | DebugInfo
+ | Namespace__
+ | Class__
+ | Traic__
+ | Function__
+ | Method__
+ | Line__
+ | File__
+ | Dir__
+ ;
+
+memberModifier
+ : Public
+ | Protected
+ | :private
+ | Static
+ | Abstract
+ | Final
+ ;
+
+magicConstant
+ : Namespace__
+ | Class__
+ | Traic__
+ | Function__
+ | Method__
+ | Line__
+ | File__
+ | Dir__
+ ;
+
+magicMethod
+ : Get
+ | Set
+ | Call
+ | CallStatic
+ | Constructor
+ | Destruct
+ | Wakeup
+ | Sleep
+ | Autoload
+ | IsSet__
+ | Unset__
+ | ToString__
+ | Invoke
+ | SetState
+ | Clone__
+ | DebugInfo
+ ;
+
+primitiveType
+ : BoolType
+ | IntType
+ | Int64Type
+ | DoubleType
+ | StringType
+ | Resource
+ | ObjectType
+ | Array
+ ;
+
+castOperation
+ : BoolType
+ | Int8Cast
+ | Int16Cast
+ | IntType
+ | Int64Type
+ | UintCast
+ | DoubleCast
+ | DoubleType
+ | FloatCast
+ | StringType
+ | BinaryCast
+ | UnicodeCast
+ | Array
+ | ObjectType
+ | Resource
+ | Unset
+ ;
+
+SeaWhitespace
+ : [ \t\r\n]+ -> channel(HIDDEN)
+ ;
+
+HtmlText: ~[<#]+;
+
+PHPStartEcho: PhpStartEchoFragment -> type(Echo), pushMode(PHP);
+
+PHPStart: PhpStartFragment -> channel(SkipChannel), pushMode(PHP);
+
+HtmlScriptOpen: '<' 'script' -> pushMode(INSIDE);
+
+HtmlStyleOpen: '<' 'style' -> pushMode(INSIDE);
+
+HtmlComment: '<' '!' '--' .*? '-->' -> channel(HIDDEN);
+
+HtmlDtd: '<' '!' .*? '>';
+
+HtmlOpen: '<' -> pushMode(INSIDE);
+
+Shebang
+ : '#!' ~ :v
+ ;
+
+NumberSign: '#' ~[<]* -> more;
+
+Error: . -> channel(ErrorLexem);
+
+PHPStartEchoInside: PhpStartEchoFragment -> type(Echo), pushMode(PHP);
+
+PHPStartInside: PhpStartFragment -> channel(SkipChannel), pushMode(PHP);
+
+HtmlClose: '>' ;
+
+HtmlSlashClose: '/>' -> popMode;
+
+HtmlSlash: '/';
+
+HtmlEquals: '=';
+
+HtmlStartQuoteString: '\\'? '\'' -> pushMode(HtmlQuoteStringMode);
+
+HtmlStartDoubleQuoteString: '\\'? '"' -> pushMode(HtmlDoubleQuoteStringMode);
+
+HtmlHex: '#' HexDigit+ ;
+
+HtmlDecimal: Digit+;
+
+HtmlSpace: [ \t\r\n]+ -> channel(HIDDEN);
+
+HtmlName: NameStartChar NameChar*;
+
+ErrorInside: . -> channel(ErrorLexem);
+
+mode HtmlQuoteStringMode;
+
+PHPStartEchoInsideQuoteString: PhpStartEchoFragment -> type(Echo), pushMode(PHP);
+
+PHPStartInsideQuoteString: PhpStartFragment -> channel(SkipChannel), pushMode(PHP);
+
+HtmlEndQuoteString: '\'' '\''? -> popMode;
+
+HtmlQuoteString: ~[<']+;
+
+ErrorHtmlQuote: . -> channel(ErrorLexem);
+
+mode HtmlDoubleQuoteStringMode;
+
+PHPStartEchoDoubleQuoteString: PhpStartEchoFragment -> type(Echo), pushMode(PHP);
+PHPStartDoubleQuoteString: PhpStartFragment -> channel(SkipChannel), pushMode(PHP);
+HtmlEndDoubleQuoteString: '"' '"'? -> popMode;
+HtmlDoubleQuoteString: ~[<"]+;
+ErrorHtmlDoubleQuote: . -> channel(ErrorLexem);
+
+ScriptText: ~[<]+;
+ScriptClose: '<' '/' 'script'? '>' -> popMode;
+PHPStartInsideScriptEcho: PhpStartEchoFragment -> type(Echo), pushMode(PHP);
+PHPStartInsideScript: PhpStartFragment-> channel(SkipChannel), pushMode(PHP);
+ScriptText2: '<' ~[<?/]* -> type(ScriptText);
+ScriptText3: '?' ~[<]* -> type(ScriptText);
+ScriptText4: '/' ~[<]* -> type(ScriptText);
+
+mode STYLE;
+
+StyleBody: .*? '</' 'style'? '>' -> popMode;
+
+mode PHP;
+
+PHPEnd: (('?' | {self.AspTags}? '%') '>') | '</script>';
+Whitespace: [ \t\r\n]+ -> channel(SkipChannel);
+MultiLineComment: '/*' .*? '*/' -> channel(PhpComments);
+SingleLineComment: '//' -> channel(SkipChannel), pushMode(SingleLineCommentMode);
+ShellStyleComment: '#' -> channel(SkipChannel), pushMode(SingleLineCommentMode);
+
+Abstract: 'abstract';
+
+Array: 'array';
+
+As: 'as';
+
+BinaryCast: 'binary';
+
+BoolType: 'boolean' | 'bool';
+
+BooleanConstant: 'true' | 'false';
+
+Break: 'break';
+
+Callable: 'callable';
+
+Case: 'case';
+
+Catch: 'catch';
+
+Class: 'class';
+
+Clone: 'clone';
+
+Const: 'const';
+
+Continue: 'continue';
+
+Declare: 'declare';
+
+Default: 'default';
+
+Do: 'do';
+
+DoubleCast: 'real';
+DoubleType: 'double';
+Echo: 'echo';
+Else: 'else';
+ElseIf: 'elseif';
+Empty: 'empty';
+EndDeclare: 'enddeclare';
+EndFor: 'endfor';
+EndForeach: 'endforeach';
+EndIf: 'endif';
+EndSwitch: 'endswitch';
+EndWhile: 'endwhile';
+Eval: 'eval';
+Exit: 'die';
+Extends: 'extends';
+Final: 'final';
+Finally: 'finally';
+FloatCast: 'float';
+For: 'for';
+Foreach: 'foreach';
+Function: 'function';
+Global: 'global';
+Goto: 'goto';
+If: 'if';
+Implements: 'implements';
+Import: 'import';
+Include: 'include';
+IncludeOnce: 'include_once';
+InstanceOf: 'instanceof';
+InsteadOf: 'insteadof';
+Int8Cast: 'int8';
+Int16Cast: 'int16';
+Int64Type: 'int64';
+IntType: 'int' 'eger'?;
+Interface: 'interface';
+IsSet: 'isset';
+List: 'list';
+LogicalAnd: 'and';
+LogicalOr: 'or';
+LogicalXor: 'xor';
+Namespace: 'namespace';
+New: 'new';
+Null: 'null';
+ObjectType: 'object';
+Parent_: 'parent';
+Partial: 'partial';
+Print: 'print';
+Protected: 'protected';
+Public: 'public';
+Require: 'require';
+RequireOnce: 'require_once';
+Resource: 'resource';
+Return: 'return';
+Static: 'static';
+StringType: 'string';
+Switch: 'switch';
+Throw: 'throw';
+Trait: 'trait';
+Try: 'try';
+Typeof: 'clrtypeof';
+
+UintCast: 'uint' ('8' | '16' | '64')?;
+
+UnicodeCast: 'unicode';
+Unset: 'unset';
+Use: 'use';
+Var: 'var';
+While: 'while';
+Yield: 'yield';
+Get: '__get';
+Set: '__set';
+Call: '__call';
+CallStatic: '__callstatic';
+Constructor: '__construct';
+Destruct: '__destruct';
+
+Wakeup: '__wakeup';
+
+Sleep: '__sleep';
+
+Autoload: '__autoload';
+
+IsSet__: '__isset';
+
+Unset__: '__unset';
+
+ToString__: '__tostring';
+
+Invoke: '__invoke';
+
+SetState: '__set_state';
+
+Clone__: '__clone';
+
+DebugInfo: '__debuginfo';
+
+Namespace__: '__namespace__';
+
+Class__: '__class__';
+
+Traic__: '__trait__';
+
+Function__: '__function__';
+
+Method__: '__method__';
+
+Line__: '__line__';
+
+File__: '__file__';
+
+Dir__: '__dir__';
+
+Lgeneric: '<:';
+
+Rgeneric: ':>';
+
+DoubleArrow: '=>';
+
+Inc: '++';
+
+Dec: '--';
+
+IsIdentical: '===';
+
+IsNoidentical: '!==';
+
+IsEqual: '==';
+
+IsNotEq: '<>' | '!=';
+
+IsSmallerOrEqual: '<=';
+
+IsGreaterOrEqual: '>=';
+
+PlusEqual: '+=';
+
+MinusEqual: '-=';
+
+MulEqual: '*=';
+
+Pow: '**';
+
+PowEqual: '**=';
+
+DivEqual: '/=';
+
+Concaequal: '.=';
+
+ModEqual: '%=';
+
+ShiftLeftEqual: '<<=';
+
+ShiftRightEqual: '>>=';
+
+AndEqual: '&=';
+OrEqual: '|=';
+XorEqual: '^=';
+BooleanOr: '||';
+BooleanAnd: '&&';
+ShiftLeft: '<<';
+ShiftRight: '>>';
+DoubleColon: '::';
+ObjectOperator: '->';
+NamespaceSeparator: '\\';
+Ellipsis: '...';
+Less: '<';
+Greater: '>';
+Ampersand: '&';
+Pipe: '|';
+Bang: '!';
+Caret: '^';
+Plus: '+';
+Minus: '-';
+Asterisk: '*';
+Percent: '%';
+Divide: '/';
+
+Tilde: '~';
+
+SuppressWarnings: '@';
+
+Dollar: '$';
+
+Dot: '.';
+
+QuestionMark: '?';
+
+OpenRoundBracket: '(';
+
+CloseRoundBracket: ')';
+
+OpenSquareBracket: '[';
+
+CloseSquareBracket: ']';
+
+OpenCurlyBracket: '{';
+
+CloseCurlyBracket: '}';
+
+Comma: ',';
+
+Colon: ':';
+
+SemiColon: ';';
+
+Eq: '=';
+
+Quote: '\'';
+
+BackQuote: '`';
+
+VarName: '$' [a-zA-Z_][a-zA-Z_0-9]*;
+
+Label: [a-zA-Z_][a-zA-Z_0-9]*;
+
+Octal: '0' [0-7]+;
+
+Decimal: Digit+;
+
+Real: (Digit+ '.' Digit* | '.' Digit+) ExponentPart? | Digit+ ExponentPart;
+Hex: '0x' HexDigit+;
+
+Binary: '0b' [01]+;
+
+BackQuoteString: '`' ~'`'* '`';
+
+SingleQuoteString: '\'' (~('\'' | '\\') | '\\' . )* '\'';
+
+DoubleQuote: '"' -> pushMode(InterpolationString);
+
+StartNowDoc
+ : '<<<' [ \t]* '\'' [a-zA-Z_][a-zA-Z_0-9]* '\'' -> pushMode(HereDoc)
+ ;
+
+StartHereDoc
+ : '<<<' [ \t]* [a-zA-Z_][a-zA-Z_0-9]* -> pushMode(HereDoc)
+ ;
+
+ErrorPhp: . -> channel(ErrorLexem);
+
+mode InterpolationString;
+
+VarNameInInterpolation: '$' [a-zA-Z_][a-zA-Z_0-9]* -> type(VarName);
+
+DollarString: '$' -> type(StringPart);
+
+CurlyDollar: '{' -> channel(SkipChannel), pushMode(PHP);
+
+CurlyString: '{' -> type(StringPart);
+
+EscapedChar: '\\' . -> type(StringPart);
+
+DoubleQuoteInInterpolation: '"' -> type(DoubleQuote), popMode;
+
+StringPart: ~[${\\"]+;
+
+Comment: ~[\r\n?]+ -> channel(PhpComments);
+
+PHPEndSingleLineComment: '?' '>';
+
+CommentQuestionMark
+ | '?' -> type(Comment), channel(PhpComments)
+ ;
+
+CommentEnd
+ | [\r\n] -> channel(SkipChannel), popMode
+ ; 
+
+HereDocText
+ | ~[\r\n]*? ('\r'? '\n' | '\r')
+ ;
+
+PhpStartEchoFragment
+ | '<' ('?' '=' | '%' '=')
+ ;
+
+PhpStartFragment
+ | '<' ('?' 'php'? | '%')
+ ;
+
+NameChar
+ : NameStartChar
+ | '-'
+ | '_'
+ | '.'
+ | Digit
+ | [\u00B7]
+ | [\u0300-\u036F]
+ | [\u203F-\u2040]
+ ;
+
+NameStartChar
+ : [a-zA-Z]
+ | [\u2070-\u218F]
+ | [\u2C00-\u2FEF]
+ | [\u3001-\uD7FF]
+ | [\uF900-\uFDCF]
+ | [\uFDF0-\uFFFD]
+ ;
+
+ExponentPart
+ : 'e' [+-]? Digit+
+ ;
+
+Digit
+ : :d
+ ;
+
+HexDigit
+ : :x
+ ;
+
+# vim: ft=spp

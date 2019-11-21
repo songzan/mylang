@@ -1,0 +1,147 @@
+ns Main
+
+use Core
+use Estr
+use Match
+use GetTable
+use OptMyMatch
+use LintMyAst
+use ToGo
+use ToC
+use ToPerl
+use ToRuby
+use ToJs
+use ToPHP
+use ToLua
+use ToPython
+use ToMy
+
+fn make-spp($lang) nil
+  my $files [
+    :Core
+    :Estr
+    :SppAst
+    :Match
+    :OptSppMatch
+    :OptMyMatch
+    :GetTable
+    :LintMyAst
+    :ToMy
+    :ToGo
+    :ToC
+    :ToPerl
+    :ToLua
+    :ToRuby
+    :ToPython
+    :ToJs
+    :ToPHP
+    :Main
+  ]
+  $files.compiler-files
+  $files.gather-files($lang :spp)
+
+fn compiler-files($files) nil
+  my $t :my.get-table
+  for $file $files.atoms
+    $t.compiler-file($file)
+
+fn compiler-file($table:table $file) nil
+  my $myfile "my/$file.my"
+  say "compiler $myfile .. "
+  my $code $myfile.readfile
+  my $match $code.match-table($table)
+  my $ast $match.opt-my-match
+  my $ofile "to/o/$file.o"
+  $ofile.writefile($ast)
+  say "-> $ofile "
+  my $t $ast.lint-my-ast
+  $t.ast-to-lang($ast $file :go)
+  $t.ast-to-lang($ast $file :c)
+  $t.ast-to-lang($ast $file :js)
+  $t.ast-to-lang($ast $file :pl)
+  $t.ast-to-lang($ast $file :rb)
+  $t.ast-to-lang($ast $file :php)
+  $t.ast-to-lang($ast $file :lua)
+  $t.ast-to-lang($ast $file :py)
+  $t.ast-to-lang($ast $file :my)
+
+fn ast-to-lang($t:Lint $ast $file $lang) nil
+  if $file == :Core return nil
+  $t.reset-block
+  my $lang-file "to/$lang/$file.$lang"
+  my $code str
+  case $lang
+  of :go  set $code $t.ast-togo($ast)
+  of :c   set $code $t.ast-toc($ast)
+  of :js  set $code $t.ast-tojs($ast)
+  of :pl  set $code $t.ast-topl($ast)
+  of :rb  set $code $t.ast-torb($ast)
+  of :php set $code $t.ast-tophp($ast) 
+  of :lua set $code $t.ast-tolua($ast)
+  of :py  set $code $t.ast-topy($ast)
+  of :my  set $code $t.ast-tomy($ast)
+  then error "ast to Lang miss $lang"
+  $lang-file.writefile($code)
+  say "-> $lang-file "
+
+fn gather-files($files $lang $item) nil
+  my $arr strs
+  say "gather $item.$lang require files .. "
+  for $name $files.atoms
+    $arr << $name.get-file-str($lang)
+  my $file "$lang\-$item.$lang"
+  my $time nil.now
+  my $bakfile "bak/$item#$time.$lang"
+  if $file.isfile
+    if $lang == :go
+      $file.rename($bakfile)
+  my $text $arr.join('\n')
+  $file.writefile($text)
+  say "create file $file"
+
+fn get-file-str($name $lang) str
+  my $file $lang.get-lang-file($name)
+  return $file.readfile
+
+fn get-lang-file($lang $file) str
+  if $file == :Core return "core/Core.$lang"
+  return "to/$lang/$file.$lang"
+
+fn help() str
+  return `
+  This is MySpp
+  Copyright  2018-2020 Songzhiquan
+
+  Usage:
+  >> go run go-spp.go [help]
+  >> go run go-spp.go make [go]
+  >> go run go-spp.go spp [top]
+  >> go run go-spp.go my [top]
+  >> go run go-spp.go grammar [top]
+`
+
+fn main() nil
+  my $osargs nil.osargs
+  my $len $osargs.len
+  if $len == 0 print nil.help
+  if $len == 1 {
+    my $name $osargs.first
+    case $name
+    of :help print nil.help
+    of :make :go.make-spp
+    of :spp :top.spp-repl
+    of :my :top.my-repl
+    of :ast print "spp".get-ast
+    then $name.lang-repl(:top)
+  }
+  if $len == 2 {
+    my [$lang $door] $osargs
+    case $lang
+    of :make $door.make-spp
+    of :spp $door.spp-repl
+    of :my $door.my-repl
+    of :ast print $door.get-ast
+    then $lang.lang-repl($door)
+  }
+
+// vim: ft=my

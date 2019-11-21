@@ -1,0 +1,237 @@
+ns ToMy
+
+use Core
+use Estr
+use LintMyAst
+
+fn ast-tomy($t:Lint $ast) str
+  my $s $t.atoms-tomy($ast)
+  my $end "\n\n// vim: ft=my"
+  return $s + $end
+
+fn atoms-tomy($t:Lint $atoms) str
+  my $arr $t.atoms-tomys($atoms)
+  my $idt $t.get-indent
+  my $sep '\n' + $idt
+  return $arr.join($sep)
+
+fn atoms-tomys($t:Lint $ast) strs
+  my $arr strs
+  for $atom $ast.atoms
+    $arr << $t.atom-tomy($atom)
+  return $arr
+
+fn block-tomy($t:Lint $expr) str
+  $t.indent.inc
+  my $s $t.atom-tomy($expr)
+  my $idt $t.get-indent
+  $t.indent.dec
+  return "$idt$s"
+
+fn call-args-tomy($t:Lint $args) str
+  if $args.is-atom
+    return $t.atom-tomy($args)
+  return $t.atoms-tomys($args).join(' ')
+
+fn atom-tomy($t:Lint $atom) str
+  my [$name $ast] $atom
+  case $name
+  of :ns return "ns $ast\n"
+  of :use return "use $ast"
+  of :fn return $t.fn-tomy($ast)
+  of :for return $t.for-tomy($ast)
+  of :ifelse return $t.atoms-tomy($ast)
+  of :block return $t.atoms-tomy($ast)
+  of :ofthen return $t.atoms-tomy($ast)
+  of :case return $t.case-tomy($ast)
+  of :my return $t.my-tomy($ast)
+  of :mys return $t.mys-tomy($ast)
+  of :estr return $t.estr-tomy($ast)
+  of :ocall return $t.ocall-tomy($ast)
+  of :index return $t.index-tomy($ast)
+  of :call return $t.call-tomy($ast)
+  of :pcall return $t.pcall-tomy($ast)
+  of :cond return $t.cond-tomy($ast)
+  of :str return $ast.str-tomy
+  of :dstr return "\"$ast\""
+  of :kstr return ":$ast"
+  of :lstr return "`$ast`"
+  of :func return $ast.func-tomy
+  of :define return $ast.define-tomy
+  of :struct return $ast.struct-tomy
+  of :ncall return $ast.ncall-tomy
+  of :sym return $ast
+  of :var return $ast
+  of :nil return $ast
+  of :char return $ast
+  of :bool return $ast
+  of :const return $ast
+  of :int return $ast
+  of :init return $ast
+  of :if return $t.if-tomy($ast)
+  of :else return $t.else-tomy($ast)
+  of :while return $t.while-tomy($ast)
+  of :of return $t.of-tomy($ast)
+  of :then return $t.then-tomy($ast)
+  of :return return $t.return-tomy($ast)
+  of :say return $t.say-tomy($ast)
+  of :print return $t.print-tomy($ast)
+  of :error return $t.error-tomy($ast)
+  of :set return $t.set-tomy($ast)
+  then say "atom to mylang miss $name"
+  return str
+
+fn cond-tomy($t:Lint $args) str
+  my $ss $t.atoms-tomys($args)
+  return $ss.join('|')
+
+fn ncall-tomy($ast) str
+  my $name $ast.name
+  return "nil.$name"
+
+fn func-tomy($ast) str
+  my [$call $ret] $ast
+  my [$name $args] $call
+  set $ret $ret.lower
+  set $args $args.lower
+  return "func $name $args $ret"
+
+fn define-tomy($ast) str
+  my [$new $type] $ast
+  set $type $type.lower
+  return "define $new $type"
+
+fn struct-tomy($ast) str
+  my [$name $pairs] $ast
+  my $arr $pairs.atoms.map(pair-tomy)
+  my $sep "\n  "
+  my $s $sep + $arr.join($sep)
+  return "\nstruct $name [$s\n]"
+
+fn pair-tomy($pair) str
+  my [$field $type] $pair
+  return "$field:$type"
+
+fn fn-tomy($t:Lint $ast) str
+  my [$head $atoms] $ast
+  my [$args $exprs] $atoms
+  my [$name-type $ret] $head
+  my $name $name-type.name
+  my $args-str $args.fn-args-tomy
+  my $block $t.block-tomy($exprs)
+  my $declare "$name($args-str) $ret"
+  return "\nfn $declare\n$block"
+
+fn fn-args-tomy($args) str
+  if $args == :nil return str
+  my $arr $args.atoms.map(fn-arg-tomy)
+  return $arr.join(' ')
+
+fn fn-arg-tomy($arg) str
+  my [$name $type] $arg
+  if $type == :str return $name
+  return "$name:$type"
+
+fn for-tomy($t:Lint $args) str
+  my [$iter-atom $exprs] $args
+  my [$it $var-set] $iter-atom
+  my $set $t.atom-tomy($var-set)
+  my $block $t.block-tomy($exprs)
+  return "for $it $set\n$block"
+
+fn case-tomy($t:Lint $args) str
+  my $arr $t.atoms-tomys($args)
+  my [$cond $exprs] $arr
+  my $idt $t.get-indent
+  return "case $cond\n$idt$exprs"
+
+fn my-tomy($t:Lint $args) str
+  my [$name $value] $args
+  my $value-str $t.atom-tomy($value)
+  return "my $name $value-str"
+
+fn mys-tomy($t:Lint $args) str
+  my [$vars $value] $args
+  my $vars-str $vars.names.join(' ')
+  my $value-str $t.atom-tomy($value)
+  return "my [$vars-str] $value-str"
+
+fn of-tomy($t:Lint $args) str
+  my $s $t.cond-block-tomy($args)
+  return "of $s"
+
+fn cond-block-tomy($t:Lint $args) str
+  my [$cond-atom $exprs-atom] $args
+  my $cond $t.atom-tomy($cond-atom)
+  my $block $t.block-tomy($exprs-atom)
+  return "$cond\n$block"
+
+fn then-tomy($t:Lint $args) str
+  my $s $t.call-args-tomy($args)
+  return "then $s"
+
+fn if-tomy($t:Lint $args) str
+  my $s $t.cond-block-tomy($args)
+  return "if $s"
+
+fn else-tomy($t:Lint $args) str
+  my $s $t.block-tomy($args)
+  return "else\n$s"
+
+fn while-tomy($t:Lint $args) str
+  my $s $t.cond-block-tomy($args)
+  return "while $s"
+
+fn return-tomy($t:Lint $args) str
+  my $s $t.call-args-tomy($args)
+  return "return $s"
+
+fn say-tomy($t:Lint $args) str
+  my $s $t.call-args-tomy($args)
+  return "say $s"
+
+fn print-tomy($t:Lint $args) str
+  my $s $t.call-args-tomy($args)
+  return "print $s"
+
+fn error-tomy($t:Lint $args) str
+  my $s $t.call-args-tomy($args)
+  return "error $s"
+
+fn set-tomy($t:Lint $args) str
+  my $s $t.call-args-tomy($args)
+  return "set $s"
+
+fn estr-tomy($t:Lint $args) str
+  my $s $t.call-args-tomy($args)
+  return "[$s]"
+
+fn str-tomy($args) str
+  my $s $args.atoms.map(value).tostr
+  return "\"$s\""
+
+fn ocall-tomy($t:Lint $args) str
+  my [$name $value] $args
+  my $s $t.atom-tomy($value)
+  return "$s.$name"
+
+fn index-tomy($t:Lint $args) str
+  my [$a $b] $t.atoms-tomys($args)
+  return "$a.$b"
+
+fn pcall-tomy($t:Lint $atom) str
+  my [$name $args] $atom
+  my [$a $b] $t.atoms-tomys($args)
+  return "$a $name $b"
+
+fn call-tomy($t:Lint $atom) str
+  my [$name $args] $atom
+  my $arr $t.atoms-tomys($args)
+  my $n $arr.len
+  my $obj $arr.first
+  $arr.shift
+  if $n == 1 return "$obj.$name"
+  my $s $arr.join(' ')
+  return "$obj.$name($s)"
+
+// vim: ft=my

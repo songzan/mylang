@@ -1,0 +1,334 @@
+ns LintMyAst
+
+use Core
+use Estr
+
+fn lint-my-ast($ast) Lint
+  my $t Lint
+  set $t.indent 0
+  set $t.counter 0
+  set $t.stree tree
+  set $t.stack strs
+  $t.regist-ast($ast)
+  $t.lint-my-atoms($ast)
+  $t.reset-block
+  return $t
+
+fn regist-ast($t:Lint $ast) nil
+  for $expr $ast.atoms
+    $t.regist-expr($expr)
+
+fn regist-expr($t:Lint $expr) nil
+  my [$name $args $at] $expr
+  set $t.at $at
+  case $name
+  of :ns $t.regist-ns($args)
+  of :use $t.regist-module($args)
+  then $t.regist-atom($name $args)
+
+fn regist-atom($t:Lint $name $args) nil
+  case $name
+  of :func $t.regist-func($args)
+  of :define $t.regist-define($args)
+  of :struct $t.regist-struct($args)
+  of :fn $t.regist-fn($args)
+
+fn regist-ns($t:Lint $ns) nil
+  $t.in-ns($ns)
+  set $t.ns $ns
+
+fn regist-module($t:Lint $module) nil
+  my $ast-file "to/o/$module.o"
+  my $ast $ast-file.readfile
+  for $expr $ast.atoms
+    $t.regist-module-expr($expr)
+
+fn regist-module-expr($t:Lint $expr) nil
+  my [$name $args] $expr
+  $t.regist-atom($name $args)
+
+fn regist-define($t:Lint $args) nil
+  my [$name $type] $args
+  $t.set-name-type($name $type)
+
+fn regist-struct($t:Lint $args) nil
+  my [$name $pairs] $args
+  $t.set-name-type($name "struct")
+  $t.in-ns($name)
+  for $pair $pairs.atoms
+    $t.regist-field($pair)
+  $t.out-ns
+
+fn regist-field($t:Lint $field) nil
+  my [$name $type] $field
+  $t.set-name-type($name $type)
+
+fn regist-func($t:Lint $args) nil
+  my [$name $ret-type] $args
+  $t.set-name-type($name $ret-type)
+
+fn regist-fn($t:Lint $args) nil
+  my $fn-head $args.name
+  $t.regist-func($fn-head)
+
+fn lint-my-atoms($t:Lint $atoms) nil
+  for $atom $atoms.atoms
+    $t.lint-my-atom($atom)
+
+fn lint-my-atom($t:Lint $atom) nil
+  my [$name $args $at] $atom
+  set $t.at $at
+  case $name
+  of :fn $t.lint-my-fn($args)
+  of :my $t.lint-my-my($args)
+  of :mys $t.lint-my-mys($args)
+  of :for $t.lint-my-for($args)
+  of :else $t.lint-my-atom($args)
+  of :then $t.lint-my-atom($args)
+  of :say $t.lint-my-atom($args)
+  of :print $t.lint-my-atom($args)
+  of :ifelse $t.lint-my-atoms($args)
+  of :of $t.lint-my-atoms($args)
+  of :case $t.lint-my-atoms($args)
+  of :estr $t.lint-my-atoms($args)
+  of :str $t.lint-my-atoms($args)
+  of :if $t.lint-my-cond-expr($args)
+  of :while $t.lint-my-cond-expr($args)
+  of :block $t.lint-my-atoms($args)
+  of :ofthen $t.lint-my-atoms($args)
+  of :return $t.lint-my-return($args)
+  of :set $t.lint-my-set($args)
+  of :ocall $t.lint-my-ocall($args)
+  of :ncall $t.lint-my-ncall($args)
+  of :pcall $t.lint-my-call($args)
+  of :call $t.lint-my-call($args)
+  then return nil
+
+fn lint-my-fn($t:Lint $ast) nil
+  my [$head $exprs] $ast
+  my [$args $block] $exprs
+  my [$name-type $ret-type] $head
+  $t.in-ns($name-type)
+  set $t.ret $ret-type
+  $t.regist-fn-args($args)
+  $t.lint-my-atom($block)
+  $t.out-ns
+
+fn regist-fn-args($t:Lint $args) nil
+  if $args == :nil return nil
+  for $arg $args.atoms
+    $t.regist-fn-arg($arg)
+
+fn regist-fn-arg($t:Lint $arg) nil
+  my [$name $type] $arg
+  $t.set-name-type($name $type)
+
+fn lint-my-my($t:Lint $args) nil
+  my [$var $value] $args
+  $t.lint-my-atom($value)
+  my $type $t.get-atom-type($value)
+  $t.set-name-type($var $type)
+
+fn lint-my-mys($t:Lint $args) nil
+  my [$vars $value] $args
+  $t.lint-my-atom($value)
+  for $name $vars.names
+    $t.set-name-type($name :str)
+
+fn lint-my-for($t:Lint $args) nil
+  my [$iter $block] $args
+  my [$var $set] $iter
+  my $set-type $t.get-atom-type($set)
+  my $var-type $t.get-iter-type($set-type)
+  $t.in-block
+  $t.set-name-type($var $var-type)
+  $t.lint-my-atom($block)
+  $t.out-block
+
+fn lint-my-set($t:Lint $args) nil
+  my [$var $value] $args
+  my $atype $t.get-atom-type($var)
+  my $btype $t.get-atom-type($value)
+  my $call-name "set.$atype:$btype"
+  if $t.is-define($call-name) return nil
+  $t.report("no set $atype $btype!")
+
+fn lint-my-cond-expr($t:Lint $args) nil
+  my [$cond $expr] $args
+  my $type $t.get-atom-type($cond)
+  $t.lint-my-atom($expr)
+  if $type == :bool return nil
+  $t.report("cond return type not bool")
+
+fn lint-my-ncall($t:Lint $call) nil
+  if $t.is-define($call) return nil
+  $t.report("no define call $call")
+
+fn lint-my-ocall($t:Lint $args) nil
+  my [$name $value] $args
+  my $type $t.get-atom-type($value)
+  my $name-type "$name.$type"
+  if $t.is-define($name-type) return nil
+  if $t.is-field($type $name) return nil
+  $t.report("no call $name.$type")
+
+fn lint-my-call($t:Lint $ast) nil
+  my [$name $args] $ast
+  my $args-type $t.get-args-type($args)
+  my $call "$name.$args-type"
+  if $t.is-define($call) return nil
+  $t.report("undefine call |$call|")
+
+fn lint-my-return($t:Lint $args) nil
+  $t.lint-my-atom($args)
+  my $rtype $t.ret
+  my $atype $t.get-atom-type($args)
+  if $atype == $rtype return nil
+  $t.report("return $atype wish: $rtype")
+
+fn get-atom-type($t:Lint $atom) str
+  my [$name $value $at] $atom
+  set $t.at $at
+  case $name
+  of :init return $value
+  of :int return $name
+  of :char return $name
+  of :str return $name
+  of :bool return $name
+  of :nil return $name
+  of :kstr return :str
+  of :lstr return :str
+  of :estr return :str
+  of :dstr return :str
+  of :sym return $t.get-sym-type($value)
+  of :var return $t.get-var-type($value)
+  of :const return $t.get-const-type($value)
+  of :index return $t.get-index-type($value)
+  of :pcall return $t.get-call-type($value)
+  of :call return $t.get-call-type($value)
+  of :ocall return $t.get-ocall-type($value)
+  of :ncall return $t.get-ncall-type($value)
+  then return :nil
+
+fn get-iter-type($t:Lint $type) str
+  my $call-name "iter.$type"
+  return $t.get-name-type($call-name)
+
+fn get-index-type($t:Lint $args) str
+  my $type $t.get-args-type($args)
+  my $call "index.$type"
+  return $t.get-name-type($call)
+
+fn get-var-type($t:Lint $name) str
+  return $t.get-name-type($name)
+
+fn get-const-type($t:Lint $name) str
+  my $type $t.get-name-type($name)
+  if $type == :struct return $name
+  return $type
+
+fn get-sym-type($t:Lint $name) str
+  if $t.is-define("$name.str") return "fn"
+  $t.report("no define fn $name:str")
+  return :nil
+
+fn get-call-type($t:Lint $atom) str
+  my [$name $args] $atom
+  my $type $t.get-args-type($args)
+  my $name-type "$name.$type"
+  return $t.get-name-type($name-type)
+
+fn is-struct($t:Lint $name) bool
+  if $t.is-define($name).not
+    return false
+  my $type $t.get-name-type($name)
+  if $type == :struct return true
+  return false
+
+fn is-field($t:Lint $name $field) bool
+  if $t.is-struct($name).not return false
+  if $t.stree.$name.has($field) return true
+  return false
+
+fn get-field-type($t:Lint $name $field) str
+  return $t.stree.$name.$field
+
+fn get-ocall-type($t:Lint $atom) str
+  my [$name $value] $atom
+  my $type $t.get-atom-type($value)
+  my $name-type "$name.$type"
+  if $t.is-define($name-type)
+    return $t.get-name-type($name-type)
+  if $t.is-field($type $name)
+    return $t.get-field-type($type $name)
+  $t.report("no register call |$name:$type|")
+  return :nil
+
+fn get-args-type($t:Lint $args) str
+  my $types strs
+  for $atom $args.atoms
+    $types << $t.get-atom-type($atom)
+  return $types.join(':')
+
+fn get-ncall-type($t:Lint $call) str
+  return $t.get-name-type($call)
+
+fn is-define($t:Lint $name) bool
+  my $tree $t.stree
+  for $ns $t.stack
+    if $tree.$ns.has($name) return true
+  return false
+
+fn set-name-type($t:Lint $name $type) nil
+  if $t.is-define($name)
+    $t.report("redefine var $name")
+  my $ns $t.get-ns
+  set $t.stree.$ns.$name $type
+
+fn get-name-type($t:Lint $name) str
+  my $tree $t.stree
+  for $ns $t.stack
+    if $tree.$ns.has($name)
+      return $tree.$ns.$name
+  $t.report("undefine name |$name|")
+  return :nil
+
+fn get-indent($t:Lint) str
+  my $indent $t.indent
+  return "  ".repeat($indent)
+
+fn get-end($t:Lint) str
+  my $indent $t.get-indent
+  return $indent + :end
+
+fn get-ns($t:Lint) str
+  if $t.stack.len == 0 return str
+  return $t.stack.first
+
+fn reset-block($t:Lint) nil
+  set $t.counter 0
+
+fn in-ns($t:Lint $ns) nil
+  if $t.stree.has($ns).not
+    set $t.stree.$ns table
+  if $ns != $t.get-ns
+    $ns >> $t.stack
+
+fn out-ns($t:Lint) nil
+  $t.stack.shift
+
+fn in-block($t:Lint) nil
+  my $ns $t.counter.tostr
+  $t.counter.inc
+  $t.in-ns($ns)
+
+fn out-block($t:Lint) nil
+  $t.out-ns
+
+fn report($t:Lint $message) nil
+  my $ns $t.ns
+  my $code "my/$ns.my".readfile
+  my $line $code.getline($t.at.toint)
+  error "** line $line $message"
+
+// vim: ft=my

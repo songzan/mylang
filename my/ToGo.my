@@ -1,0 +1,402 @@
+ns ToGo
+
+use Core
+use Estr
+use LintMyAst
+
+fn ast-togo($t:Lint $ast) str
+  my $arr $t.atoms-togos($ast)
+  return $arr.join('\n')
+
+fn atoms-togos($t:Lint $atoms) strs
+  my $arr strs
+  for $atom $atoms.atoms {
+    my $s $t.atom-togo($atom)
+    if $s != str $arr << $s
+  }
+  return $arr
+
+fn atoms-togo($t:Lint $atoms) str
+  my $arr $t.atoms-togos($atoms)
+  my $idt $t.get-indent
+  my $sep '\n' + $idt
+  return $arr.join($sep)
+
+fn block-togo($t:Lint $expr) str
+  my $idt $t.get-indent
+  $t.indent.inc
+  my $s $t.atom-togo($expr)
+  my $inc-idt $t.get-indent
+  $t.indent.dec
+  return "{\n$inc-idt$s\n$idt}"
+
+fn exprs-togo($t:Lint $expr) str
+  $t.indent.inc
+  my $s $t.atom-togo($expr)
+  $t.indent.dec
+  return $s
+
+fn call-args-togo($t:Lint $args) str
+  my $arr $t.atoms-togos($args)
+  return $arr.join(',')
+
+fn name-togo($name) str
+  my $buf buffer
+  for $c $name
+    case $c
+    of '-' $buf << '_'
+    of '$' $buf << '_'
+    then $buf << $c
+  return $buf.tostr
+
+fn atom-togo($t:Lint $atom) str
+  my [$name $args] $atom
+  case $name
+  of :ns return $t.ns-togo($args)
+  of :fn return $t.fn-togo($args)
+  of :for return $t.for-togo($args)
+  of :case return $t.case-togo($args)
+  of :if return $t.if-togo($args)
+  of :ifelse return $t.ifelse-togo($args)
+  of :else return $t.else-togo($args)
+  of :while return $t.while-togo($args)
+  of :block return $t.atoms-togo($args)
+  of :ofthen return $t.atoms-togo($args)
+  of :of return $t.of-togo($args)
+  of :then return $t.then-togo($args)
+  of :my return $t.my-togo($args)
+  of :mys return $t.mys-togo($args)
+  of :set return $t.set-togo($args)
+  of :return return $t.return-togo($args)
+  of :say return $t.say-togo($args)
+  of :print return $t.print-togo($args)
+  of :error return $t.error-togo($args)
+  of :estr return $t.estr-togo($args)
+  of :str return $t.str-togo($args)
+  of :ncall return $t.ncall-togo($args)
+  of :ocall return $t.ocall-togo($args)
+  of :pcall return $t.pcall-togo($args)
+  of :index return $t.index-togo($args)
+  of :call return $t.call-togo($args)
+  of :sym return $args.name-togo
+  of :var return $args.name-togo
+  of :init return $args.init-togo
+  of :const return $t.const-togo($args)
+  of :dstr return $args.dstr-togo
+  of :lstr return "`$args`"
+  of :kstr return "`$args`"
+  of :char return $args
+  of :int return $args
+  of :bool return $args
+  of :use return str
+  of :nil return str
+  of :define return str
+  of :struct return str
+  of :func return str
+  then error "atom to go miss $name"
+  return str
+
+fn ns-togo($t:Lint $ns) str
+  $t.in-ns($ns)
+  return str
+
+fn fn-togo($t:Lint $ast) str
+  my [$head $exprs] $ast
+  my [$args $block] $exprs
+  my [$call-type $ret-type] $head
+  my $call $call-type.name
+  $t.in-ns($call-type)
+  my $ret $t.type-togo($ret-type)
+  my $name $call.name-togo
+  my $astr $t.fn-args-togo($args)
+  my $s $t.block-togo($block)
+  $t.out-ns
+  if $name == :main
+    return "\nfunc $name() $s"
+  return "\nfunc $name($astr) $ret $s"
+
+fn fn-args-togo($t:Lint $fnargs) str
+  if $fnargs == :nil return str
+  my $args strs
+  for $fnarg $fnargs.atoms {
+    my $arg-str $t.fn-arg-togo($fnarg)
+    $args << $arg-str
+  }
+  return $args.join(',')
+
+fn fn-arg-togo($t:Lint $fnarg) str
+  my [$name $type] $fnarg
+  my $name-str $name.name-togo
+  my $type-str $t.type-togo($type)
+  return "$name-str $type-str"
+
+fn type-togo($t:Lint $type) str
+  if $t.is-struct($type) return "*$type"
+  case $type
+  of :nil return str
+  of :str return "string"
+  of :strs return "[]string"
+  of :chars return "*Buffer"
+  then return $type
+
+fn for-togo($t:Lint $args) str
+  my [$iter-atom $expr] $args
+  my $iter $t.for-iter-togo($iter-atom)
+  $t.in-block
+  my $block $t.block-togo($expr)
+  $t.out-block
+  return "for $iter $block"
+
+fn for-iter-togo($t:Lint $atom) str
+  my [$iter-name $set-atom] $atom
+  my $type $t.get-atom-type($set-atom)
+  my $it $iter-name.name-togo
+  my $set $t.atom-togo($set-atom)
+  case $type
+  of :str
+    return "_,$it := range []char($set)"
+  of :strs
+    return "_,$it := range $set"
+  then return "$it,_ := range $set"
+
+fn case-togo($t:Lint $args) str
+  my [$cond-atom $block-atom] $args
+  my $cond $t.atom-togo($cond-atom)
+  my $block $t.block-togo($block-atom)
+  return "switch ($cond) $block"
+
+fn of-togo($t:Lint $args) str
+  my [$cond $block] $args
+  my $cond-str $t.atom-togo($cond)
+  my $block-str $t.exprs-togo($block)
+  return "case $cond-str:$block-str"
+
+fn then-togo($t:Lint $block) str
+  my $s $t.exprs-togo($block)
+  return "default: $s"
+
+fn if-togo($t:Lint $args) str
+  my $s $t.cond-block-togo($args)
+  return "if $s"
+
+fn cond-block-togo($t:Lint $args) str
+  my [$cond $block] $args
+  my $cond-str $t.atom-togo($cond)
+  my $block-str $t.block-togo($block)
+  return "$cond-str $block-str"
+
+fn ifelse-togo($t:Lint $exprs) str
+  my $arr $t.atoms-togos($exprs)
+  return $arr.join(' ')
+
+fn else-togo($t:Lint $block) str
+  my $block-str $t.block-togo($block)
+  return "else $block-str"
+
+fn while-togo($t:Lint $args) str
+  my $s $t.cond-block-togo($args)
+  return "for $s"
+
+fn my-togo($t:Lint $args) str
+  my [$var $value] $args
+  my $var-str $var.name-togo
+  my $vstr $t.atom-togo($value)
+  return "$var-str := $vstr"
+
+fn mys-togo($t:Lint $args) str
+  my [$vars $value] $args
+  my $names $vars.names.map(name-togo)
+  my $len $names.len.tostr
+  my $nstr $names.join(',')
+  my $type $t.get-atom-type($value)
+  my $vstr $t.atom-togo($value)
+  if $type == :strs
+    return "$nstr := flat$len($vstr)"
+  return "$nstr := flat$len(atoms($vstr))"
+
+fn set-togo($t:Lint $args) str
+  my $arr $t.atoms-togos($args)
+  return $arr.join(" = ")
+
+fn return-togo($t:Lint $args) str
+  my $s $t.atom-togo($args)
+  return "return $s"
+
+fn say-togo($t:Lint $args) str
+  my $s $t.atom-togo($args)
+  return "println($s)"
+
+fn print-togo($t:Lint $args) str
+  my $s $t.atom-togo($args)
+  return "print($s)"
+
+fn error-togo($t:Lint $args) str
+  my $s $t.atom-togo($args)
+  return "error($s)"
+
+fn estr-togo($t:Lint $args) str
+  my $type $t.get-args-type($args)
+  my $s $t.call-args-togo($args)
+  if $type == :strs return "estr($s)"
+  return "estr([]string{$s})"
+
+fn str-togo($t:Lint $args) str
+  my $buf buffer
+  my $names strs
+  for $atom $args.atoms {
+    my [$name $value] $atom
+    if $name == :dstr
+      $buf << $value.dchars-togo
+    else {
+      $buf << :%s
+      $names << $value.name-togo
+    }
+  }
+  my $format $buf.tostr
+  my $nstr $names.join(',')
+  return "fmt.Sprintf(\"$format\",$nstr)"
+
+fn dstr-togo($dstr) str
+  my $s $dstr.dchars-togo
+  return "\"$s\""
+
+fn dchars-togo($s) str
+  my $buf buffer
+  my $mode 0
+  for $c $s {
+    if $mode == 0 {
+      if $c == '\\' set $mode 1
+      else $buf << $c
+    }
+    else {
+      set $mode 0
+      case $c
+      of '$' $buf << $c
+      of '-' $buf << $c
+      of '%' $buf << :%%
+      then $buf << '\\' + $c
+    }
+  }
+  return $buf.tostr
+
+fn ncall-togo($t:Lint $call) str
+  my $name $call.name.name-togo
+  return "$name()"
+
+fn index-togo($t:Lint $args) str
+  my [$data $at] $t.atoms-togos($args)
+  return "$data[$at]"
+
+fn pcall-togo($t:Lint $atom) str
+  my [$name $args] $atom
+  my $type $t.get-args-type($args)
+  my [$a $b] $t.atoms-togos($args)
+  case $name
+  of :+ return $a.add-togo($b $type)
+  of :<< return $a.push-togo($b $type)
+  of :>> return $a.insert-togo($b)
+  then return "$a $name $b"
+
+fn in-togo($a $b $type) str
+  case $type
+  of :char:chars return "inchars($a,$b)"
+  then return "instrs($a,$b)"
+
+fn add-togo($a $b $type) str
+  case $type
+  of :char:char return "addcc($a,$b)"
+  of :char:str return "addcs($a,$b)"
+  of :str:char return "addsc($a,$b)"
+  then return "$a + $b"
+
+fn push-togo($a $b $type) str
+  case $type
+  of :buffer:char return "$a.WriteRune($b)"
+  of :buffer:str return "$a.WriteString($b)"
+  then return "$a = append($a,$b)"
+
+fn insert-togo($a $b) str
+  return "$b = append([]string{$a},$b...)"
+
+fn ocall-togo($t:Lint $args) str
+  my [$name $value] $args
+  my $type $t.get-atom-type($value)
+  my $s $t.atom-togo($value)
+  if $t.is-field($type $name)
+    return "$s.$name"
+  return $name.call-name-togo($s $type)
+
+fn call-togo($t:Lint $atom) str
+  my [$call $args] $atom
+  my $type $t.get-args-type($args)
+  my $s $t.call-args-togo($args)
+  return $call.call-name-togo($s $type)
+
+fn init-togo($name) str
+  case $name
+  of :int return :0
+  of :str return "``"
+  of :strs return "[]string{}"
+  of :buffer return "new(bytes.Buffer)"
+  of :table return "table{}"
+  of :tree return "tree{}"
+  then error "init to go miss $name"
+  return str
+
+fn const-togo($t:Lint $name) str
+  if $t.is-struct($name)
+    return "new($name)"
+  return $name
+
+fn call-name-togo($call $s $type) str
+  my $name $call.name-togo
+  case $name
+  of :join return $s.join-togo($type)
+  of :tostr return $s.tostr-togo($type)
+  of :has return $s.has-togo($type)
+  of :len return $s.len-togo($type)
+  of :first return $s.first-togo($type)
+  of :second return $s.second-togo($type)
+  of :shift return "$s = $s[1:]"
+  of :map return "mapstrs($s)"
+  of :inc return "$s += 1"
+  of :dec return "$s -= 1"
+  of :not return "!$s"
+  of :tochars return "[]char($s)"
+  then return "$name($s)"
+
+fn len-togo($s $type) str
+  case $type
+  of :buffer return "$s.Len()"
+  then return "len($s)"
+
+fn join-togo($s $type) str
+  if $type == :strs:str return "join($s)"
+  return "joinchar($s)"
+
+fn tostr-togo($s $type) str
+  case $type
+  of :char return "string($s)"
+  of :chars return "string($s)"
+  of :buffer return "$s.String()"
+  of :int return "itos($s)"
+  then return "tostr($s)"
+
+fn first-togo($s $type) str
+  case $type
+  of :str return "first($s)"
+  then return "$s[0]"
+
+fn second-togo($s $type) str
+  case $type
+  of :str return "second($s)"
+  then return "$s[1]"
+
+fn has-togo($s $type) str
+  case $type
+  of :table:str return "has_key($s)"
+  of :tree:str return "has_node($s)"
+  of :str:char return "has_char($s)"
+  then return "has_str($s)"
+
+// vim: ft=my

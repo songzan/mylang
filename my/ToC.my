@@ -1,0 +1,508 @@
+ns ToC
+
+use Core
+use Estr
+use LintMyAst
+
+fn ast-toc($t:Lint $ast) str
+  my $fn-str $t.get-fn-declare($ast)
+  my $exprs $t.atoms-tocs($ast)
+  my $ast-str $exprs.join('\n')
+  return $fn-str + $ast-str
+
+fn get-fn-declare($t:Lint $ast) str
+  my $arr strs
+  for $expr $ast.atoms {
+    my [$name $args] $expr
+    if $name == :fn
+      $arr << $t.fn-to-declare($args)
+  }
+  return $arr.join('\n')
+
+fn fn-to-declare($t:Lint $args) str
+  my [$name-type $ret-type] $args.name
+  my [$call $types] $name-type
+  if $call == :main return str
+  my $name $call.name-toc
+  my $ret $ret-type.type-toc
+  if $types == :nil
+    return "$ret $name();"
+  my $as $types.names.map(type-toc).join(',')
+  return "$ret $name($as);"
+
+fn atoms-tocs($t:Lint $atoms) strs
+  my $arr strs
+  for $atom $atoms.atoms {
+    my $s $t.atom-toc($atom)
+    if $s != str $arr << $s
+  }
+  return $arr
+
+fn atoms-toc($t:Lint $exprs) str
+  my $arr $t.atoms-tocs($exprs)
+  my $idt $t.get-indent
+  my $sep '\n' + $idt
+  return $arr.join($sep)
+
+fn block-toc($t:Lint $expr) str
+  $t.indent.inc
+  my $block $t.atom-toc($expr)
+  my $idt $t.get-indent
+  $t.indent.dec
+  my $ident $t.get-indent
+  return "{\n$idt$block\n$ident}"
+
+fn exprs-toc($t:Lint $expr) str
+  $t.indent.inc
+  my $s $t.atom-toc($expr)
+  $t.indent.dec
+  return $s
+
+fn call-args-toc($t:Lint $args) str
+  my $arr $t.atoms-tocs($args)
+  return $arr.join(',')
+
+fn atom-toc($t:Lint $atom) str
+  my [$name $args] $atom
+  case $name
+  of :ns return $t.ns-toc($args)
+  of :fn return $t.fn-toc($args)
+  of :for return $t.for-toc($args)
+  of :case return $t.case-toc($args)
+  of :ifelse return $t.atoms-toc($args)
+  of :block return $t.atoms-toc($args)
+  of :ofthen return $t.atoms-toc($args)
+  of :if return $t.if-toc($args)
+  of :else return $t.else-toc($args)
+  of :while return $t.while-toc($args)
+  of :my return $t.my-toc($args)
+  of :mys return $t.mys-toc($args)
+  of :return return $t.return-toc($args)
+  of :set return $t.set-toc($args)
+  of :say return $t.say-toc($args)
+  of :print return $t.print-toc($args)
+  of :error return $t.error-toc($args)
+  of :estr return $t.estr-toc($args)
+  of :ncall return $t.ncall-toc($args)
+  of :index return $t.index-toc($args)
+  of :pcall return $t.pcall-toc($args)
+  of :ocall return $t.ocall-toc($args)
+  of :call return $t.call-toc($args)
+  of :const return $t.const-toc($args)
+  of :sym return $args.name-toc
+  of :var return $args.name-toc
+  of :init return $args.init-toc
+  of :str return $args.str-toc
+  of :dstr return $args.dstr-toc
+  of :lstr return $args.lstr-toc
+  of :char return $args
+  of :kstr return "\"$args\""
+  of :bool return $args
+  of :int return $args
+  of :nil return str
+  of :use return str
+  of :define return str
+  of :func return str
+  of :struct return str
+  then say "atom to c miss $name"
+  return str
+
+fn lstr-toc($lstr) str
+  my $buf buffer
+  for $a $lstr
+    if $a != '\r'
+      case $a
+      of '\n' $buf << "\\n"
+      then $buf << $a
+  my $s $buf.tostr
+  return "\"$s\""
+
+fn ns-toc($t:Lint $ns) str
+  $t.in-ns($ns) return str
+
+fn fn-toc($t:Lint $ast) str
+  my [$head $atoms] $ast
+  my [$args $exprs] $atoms
+  my [$name-type $ret-type] $head
+  $t.in-ns($name-type)
+  my $call $name-type.name
+  my $name $call.name-toc
+  my $block $t.exprs-toc($exprs)
+  $t.out-ns
+  if $name == :main {
+    my $hs "int main(int argc,char* argv[])"
+    my $es "  return 0;\n}\n"
+    return "\n$hs{  $block\n$es"
+  }
+  my $ret $ret-type.type-toc
+  my $args-str $args.fn-args-toc
+  my $str "$ret $name($args-str)"
+  return "\n$str {\n  $block\n}"
+
+fn fn-args-toc($args) str
+  if $args == :nil return str
+  my $arr $args.atoms.map(fnarg-toc)
+  return $arr.join(',')
+
+fn fnarg-toc($fnarg) str
+  my [$name $type] $fnarg
+  my $name-str $name.name-toc
+  my $type-str $type.type-toc
+  return "$type-str $name-str"
+
+fn type-toc($type) str
+  case $type
+  of :nil return :void
+  of :str return :char*
+  of :bool return :bool
+  of :int return :int
+  of :char return :char
+  of :chars return :char*
+  of :buffer return :Buffer*
+  of :strs return :Strs*
+  of :table return :Table*
+  of :tree return :Tree*
+  then return "$type*"
+
+fn for-toc($t:Lint $args) str
+  my [$it-expr $exprs] $args
+  my $it-str $t.iter-toc($it-expr)
+  $t.in-block
+  my $exprs-str $t.exprs-toc($exprs)
+  $t.out-block
+  my $idt $t.get-indent
+  return "$it-str  $exprs-str\n$idt}"
+
+fn iter-toc($t:Lint $expr) str
+  my [$var $it-atom] $expr
+  my $type $t.get-atom-type($it-atom)
+  my $name $var.name-toc
+  my $it $t.atom-toc($it-atom)
+  my $idt $t.get-indent
+  case $type
+  of :str
+    return $idt.iterstr-toc($name $it)
+  of :strs
+    return $idt.iter-strs-toc($name $it)
+  then return $idt.iter-table-toc($name $it)
+
+fn iterstr-toc($idt $var $it) str
+  my $bstr "int i = 0; int n = strlen($it);"
+  my $istr "for (i=0; i < n; i++) {"
+  my $vstr "  char $var = $it[i];"
+  return "$bstr\n$idt$istr\n$idt$vstr\n$idt"
+
+fn iter-strs-toc($idt $var $it) str
+  my $bstr "Snode* n = $it\->head;"
+  my $istr "while (n != NULL) {"
+  my $vstr "  char* $var = n\->str; n = n\->next;"
+  return "$bstr\n$idt$istr\n$idt$vstr\n$idt"
+
+fn iter-table-toc($idt $var $it) str
+  my $bstr "Snode* n = $it\->keys\->head;"
+  my $istr "while (n != NULL) {"
+  my $vstr "  char* $var = n\->str; n = n\->next;"
+  return "$bstr\n$idt$istr\n$idt$vstr\n$idt"
+
+fn case-toc($t:Lint $args) str
+  my [$case-atom $exprs] $args
+  my $case $t.atom-toc($case-atom)
+  my $n 0
+  my $if :if
+  my $arr strs
+  for $expr $exprs.value.atoms {
+    $n.inc
+    if $n == 2 set $if "else if"
+    $arr << $t.ofthen-toc($expr $case $if)
+  }
+  return $arr.join(' ')
+
+fn ofthen-toc($t:Lint $expr $case $if) str
+  my [$name $exprs] $expr
+  case $name
+  of :of
+    my [$cond $block] $exprs
+    my $cs $cond.cond-toc($case)
+    my $bs $t.block-toc($block)
+    return "$if ($cs) $bs"
+  then return $t.else-toc($exprs)
+
+fn cond-toc($atom $case) str
+  my [$name $value] $atom
+  case $name
+  of :kstr return "eq($case,\"$value\")"
+  then return "$case == $value"
+
+fn if-toc($t:Lint $exprs) str
+  my $s $t.cond-block-toc($exprs)
+  return "if $s"
+
+fn else-toc($t:Lint $exprs) str
+  my $s $t.block-toc($exprs)
+  return "else $s"
+
+fn while-toc($t:Lint $args) str
+  my $s $t.cond-block-toc($args)
+  return "while $s"
+
+fn cond-block-toc($t:Lint $args) str
+  my [$cond $exprs] $args
+  my $cond-str $t.atom-toc($cond)
+  my $exprs-str $t.block-toc($exprs)
+  return "($cond-str) $exprs-str"
+
+fn my-toc($t:Lint $args) str
+  my [$var $value] $args
+  my $type $t.get-atom-type($value)
+  my $tstr $type.type-toc
+  my $vstr $t.atom-toc($value)
+  my $name $var.name-toc
+  return "$tstr $name = $vstr;"
+
+fn return-toc($t:Lint $args) str
+  my $value $t.atom-toc($args)
+  return "return $value;"
+
+fn say-toc($t:Lint $args) str
+  my $s $t.atom-toc($args)
+  return "say($s);"
+
+fn print-toc($t:Lint $args) str
+  my $s $t.atom-toc($args)
+  return "print($s);"
+
+fn error-toc($t:Lint $args) str
+  my $s $t.atom-toc($args)
+  return "error($s);"
+
+fn estr-toc($t:Lint $args) str
+  my $type $t.get-args-type($args)
+  my $arr $t.atoms-tocs($args)
+  my $len $arr.len.tostr
+  my $s $arr.join(',')
+  if $type == :strs return "estr($s)"
+  return "estr(tostrs($len,$s))"
+
+fn ncall-toc($t:Lint $call) str
+  my $type $t.get-ncall-type($call)
+  my $name $call.name.name-toc
+  if $name == :osargs
+    return "osargs(argc,argv)"
+  if $type == :nil return "$name();"
+  return "$name()"
+
+fn ocall-toc($t:Lint $args) str
+  my [$name $value] $args
+  my $type $t.get-atom-type($value)
+  my $s $t.atom-toc($value)
+  if $t.is-field($type $name)
+    return "$s\->$name"
+  return $t.call-name-toc($name $s $type)
+
+fn pcall-toc($t:Lint $atom) str
+  my [$name $args] $atom
+  my $type $t.get-args-type($args)
+  my [$a $b] $t.atoms-tocs($args)
+  case $name
+  of :+ return $a.add-toc($b $type)
+  of :== return $a.eq-toc($b $type)
+  of :!= return $a.ne-toc($b $type)
+  of :<< return $a.push-toc($b $type)
+  of :>> return "insert($b,$a);"
+  of :+= return "$a += $b;"
+  then return "$a $name $b"
+
+fn add-toc($a $b $type) str
+  case $type
+  of :char:char return "charAddChar($a,$b)"
+  of :str:char return "strAddChar($a,$b)"
+  of :char:str return "charAddStr($a,$b)"
+  of :str:str return "strAddStr($a,$b)"
+  then return "$a + $b"
+
+fn eq-toc($a $b $type) str
+  case $type
+  of :str:str return "eq($a,$b)"
+  then return "$a == $b"
+
+fn ne-toc($a $b $type) str
+  case $type
+  of :str:str return "ne($a,$b)"
+  then return "$a != $b"
+
+fn push-toc($a $b $type) str
+  case $type
+  of :buffer:char return "pushChar($a,$b);"
+  of :buffer:str return "pushStr($a,$b);"
+  then return "push($a,$b);"
+
+fn call-toc($t:Lint $atom) str
+  my [$name $args] $atom
+  my $type $t.get-args-type($args)
+  my $s $t.call-args-toc($args)
+  return $t.call-name-toc($name $s $type)
+
+fn call-name-toc($t:Lint $name $s $type) str
+  my $name-type "$name.$type"
+  my $ctype $t.get-name-type($name-type)
+  my $pname $name.name-toc
+  case $name
+  of :has return $s.has-toc($type)
+  of :join return $s.join-toc($type)
+  of :len return $s.len-toc($type)
+  of :first return $s.first-toc($type)
+  of :second return $s.second-toc($type)
+  of :rest return $s.rest-toc($type)
+  of :tostr return $s.tostr-toc($type)
+  of :dec return "$s\--;"
+  of :inc return "$s++;"
+  of :not return "!$s"
+  of :toint return "atoi($s)"
+  of :tochars return $s
+  of :shift return "shift($s);"
+  then 
+    if $ctype == :nil return "$pname($s);"
+    else return "$pname($s)"
+
+fn has-toc($s $type) str
+  case $type
+  of :str:char return "hasChar($s)"
+  of :table:str return "hasKey($s)"
+  then return "hasNode($s)"
+
+fn tostr-toc($s $type) str
+  case $type
+  of :int return "intToStr($s)"
+  of :char return "charToStr($s)"
+  of :strs return "strsToStr($s)"
+  of :buffer return "bufferToStr($s)"
+  then return $s
+
+fn join-toc($s $type) str
+  case $type
+  of :strs:char return "join($s)"
+  then return "joinStr($s)"
+
+fn len-toc($s $type) str
+  case $type
+  of :str return "strlen($s)"
+  of :chars return "strlen($s)"
+  then return "$s\->len"
+
+fn first-toc($s $type) str
+  case $type
+  of :str return "$s[0]"
+  then return "first($s)"
+
+fn second-toc($s $type) str
+  case $type
+  of :str return "$s[1]"
+  then return "second($s)"
+
+fn rest-toc($s $type) str
+  case $type
+  of :str return "rest($s)"
+  then return "restStrs($s)"
+
+fn init-toc($name) str
+  case $name
+  of :int return :0
+  of :str return "\"\""
+  of :strs return "newStrs()"
+  of :buffer return "newBuffer()"
+  of :table return "newTable()"
+  of :tree return "newTree()"
+  then return "new$name()"
+
+fn const-toc($t:Lint $name) str
+  if $t.is-struct($name)
+    return "new$name()"
+  return $name
+
+fn name-toc($name) str
+  my $buf buffer
+  for $a $name
+    case $a
+    of '$' $buf << 'a'
+    of '-' $buf << '_'
+    then $buf << $a
+  return $buf.tostr
+
+fn str-toc($atoms) str
+  my $args strs
+  for $atom $atoms.atoms
+    $args << $atom.satom-toc
+  my $amount $args.len.tostr
+  my $args-str $args.join(',')
+  return "add($amount,$args-str)"
+
+fn satom-toc($atom) str
+  my [$type $value] $atom
+  if $type == :dstr
+    return $value.dstr-toc
+  return $value.name-toc
+
+fn dstr-toc($dstr) str
+  my $s $dstr.dchars-toc
+  return "\"$s\""
+
+fn dchars-toc($s) str
+  my $buf buffer
+  my $mode 0
+  for $a $s
+    case $mode
+    of 1
+      set $mode 0
+      case $a
+      of '$' $buf << $a
+      of '-' $buf << $a
+      of '{' $buf << $a
+      then $buf << '\\' + $a
+    then
+      case $a
+      of '\\' set $mode 1
+      then $buf << $a
+  return $buf.tostr
+
+fn set-toc($t:Lint $args) str
+  my [$var $value] $args
+  my [$type $name] $var
+  my $vstr $t.atom-toc($value)
+  if $type == :index
+    return $t.set-index-toc($name $vstr)
+  my $var-str $t.atom-toc($var)
+  return "$var-str = $vstr;"
+
+fn set-index-toc($t:Lint $args $value) str
+  my $type $t.get-args-type($args)
+  my [$data $at] $t.atoms-tocs($args)
+  case $type
+  of :chars:int
+    return "$data[$at] = $value;"
+  of :table:str
+    return "setKey($data,$at,$value);"
+  then return "setNode($data,$at,$value);"
+
+fn index-toc($t:Lint $args) str
+  my $type $t.get-args-type($args)
+  my [$data $at] $t.atoms-tocs($args)
+  case $type
+  of :chars:int return "$data[$at]"
+  of :table:str return "getKey($data,$at)"
+  then return "getNode($data,$at)"
+
+fn mys-toc($t:Lint $args) str
+  my [$vars $value] $args
+  my $syms $vars.names
+  my $names $syms.map(name-toc)
+  my $len $names.len.tostr
+  my $ds $names.join(",*")
+  my $as $names.join(",&")
+  my $vs $t.atom-toc($value)
+  my $type $t.get-atom-type($value)
+  my $dstr "char *$ds;"
+  if $type == :strs
+    return "$dstr set$len($vs,&$as);"
+  return "$dstr set$len(atoms($vs),&$as);"
+
+// vim: ft=my

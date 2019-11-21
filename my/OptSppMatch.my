@@ -1,0 +1,109 @@
+ns OptSppMatch
+
+use Core
+use Estr
+
+fn opt-spp-match($match) str
+  my $rules $match.atoms
+  return [$rules.map(get-name-rule)]
+
+fn get-name-rule($ast) str
+  my [$token $atom] $ast.value
+  my $name $token.value
+  my $rule $atom.opt-spp-atom
+  return [$name $rule]
+  
+fn opt-spp-ast($atoms) str
+  if $atoms.is-atom
+    return [$atoms.opt-spp-atom]
+  my $rules strs
+  for $atom $atoms.atoms
+    $rules << $atom.opt-spp-atom
+  return [$rules]
+
+fn opt-spp-atom($atom) str
+  my [$name $ast] $atom
+  case $name
+  of :name return $ast.opt-spp-token
+  of :@rules return $ast.opt-spp-rules
+  of :@branch return $ast.opt-spp-branch
+  of :@chars return $ast.opt-spp-chars
+  of :cclass return $ast.opt-spp-cclass
+  of :@range return $ast.opt-spp-range
+  of :@rept return $ast.opt-spp-rept
+  of :str return $ast.opt-spp-str
+  of :char return $ast.opt-spp-char
+  of :class return $ast.opt-spp-class
+  of :anychar return $ast.opt-spp-anychar
+  of :not return [:not $ast.opt-spp-atom]
+  of :till return [:till $ast.opt-spp-atom]
+  of :word return [:word $ast.rest]
+  then return [$name $ast]
+
+fn opt-spp-rules($ast) str
+  if $ast.is-str return str
+  if $ast.is-atom return $ast.opt-spp-atom
+  return [:rules $ast.opt-spp-ast]
+
+fn opt-spp-branch($ast) str
+  if $ast.is-atom return $ast.opt-spp-atom
+  return [:branch $ast.opt-spp-ast]
+
+fn opt-spp-chars($ast) str
+  if $ast.is-str return str
+  if $ast.is-atom return $ast.opt-spp-atom
+  return [:chars $ast.opt-spp-ast]
+
+fn opt-spp-cclass($ast) str
+  if $ast.is-str return str
+  if $ast.is-atom return $ast.opt-spp-atom
+  return [:cclass $ast.opt-spp-ast]
+
+fn opt-spp-range($ast) str
+  my [$from $to] $ast.opt-spp-ast
+  my $range $from.value + $to.value
+  return [:range $range]
+
+fn opt-spp-token($name) str
+  if $name == :EOF return [:eof $name]
+  my $type $name.get-spp-token-type
+  return [$type $name]
+
+fn get-spp-token-type($name) str
+  my $char $name.first
+  case $char
+  of '@' return :gtoken
+  of '_' return :rtoken
+  then return :ntoken
+
+fn opt-spp-rept($ast) str
+  my [$atom $rept] $ast
+  my $rule $atom.opt-spp-atom
+  my $flag $rept.value
+  case $flag
+  of :? return [:maybe $rule]
+  of :* return [:many $rule]
+  of :+ return [:more $rule]
+  then return [:time [$flag $rule]]
+
+fn opt-spp-str($ast) str
+  my $str $ast.cut
+  if $str.len == 1
+    return [:char $str]
+  return [:str $str]
+
+fn opt-spp-class($ast) str
+  my $char $ast.tail
+  if $char.isalpha
+    return [:class $char.tostr]
+  return [:char $char.tostr]
+
+fn opt-spp-char($ast) str
+  my $char $ast.tail
+  return [:char $char.tostr]
+
+fn opt-spp-anychar($ast) str
+  my $str $ast.cut
+  return [:anychar $str]
+
+// vim: ft=my
